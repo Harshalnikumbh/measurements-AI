@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block title %}Virtual Try-On - AI Body Measurement{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1>Virtual Try-On</h1>
+        <p>Try clothes virtually before you buy</p>
+    </div>
+</section>
+
+<section class="measurement-section">
+    <div class="container">
+        <div class="measurement-card">
+            <h2 style="text-align: center; margin-bottom: 30px; color: #4338ca;">Upload Images</h2>
+            
+            <form id="tryonForm">
+                <!-- Clothing Type Selection -->
+                <div class="form-group">
+                    <label>Clothing Type</label>
+                    <div class="gender-select">
+                        <label class="gender-option selected">
+                            <input type="radio" name="clothing_type" value="0" checked>
+                            <span>Upper Body</span>
+                        </label>
+                        <label class="gender-option">
+                            <input type="radio" name="clothing_type" value="1">
+                            <span>Lower Body</span>
+                        </label>
+                        <label class="gender-option">
+                            <input type="radio" name="clothing_type" value="2">
+                            <span>Full Body</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Image Upload Section -->
+                <div class="upload-section">
+                    <!-- Person Image -->
+                    <div class="upload-box" id="personUploadBox">
+                        <input type="file" id="personImage" name="person_image" accept="image/*">
+                        <img src="https://cdn-icons-png.flaticon.com/512/3135/3135715.png" alt="Person" class="upload-icon-img">
+                        <div class="upload-text">
+                            <strong>Upload Your Photo</strong>
+                            <p style="font-size: 0.85em; color: #64748b; margin-top: 5px;">Full body photo recommended</p>
+                        </div>
+                        <div class="file-name" id="personFileName"></div>
+                        <img class="preview-image" id="personPreview">
+                    </div>
+
+                    <!-- Clothing Image -->
+                    <div class="upload-box" id="clothingUploadBox">
+                        <input type="file" id="clothingImage" name="clothing_image" accept="image/*">
+                        <img src="https://cdn-icons-png.flaticon.com/512/3050/3050170.png" alt="Clothing" class="upload-icon-img">
+                        <div class="upload-text">
+                            <strong>Upload Clothing</strong>
+                            <p style="font-size: 0.85em; color: #64748b; margin-top: 5px;">Clear photo of the garment</p>
+                        </div>
+                        <div class="file-name" id="clothingFileName"></div>
+                        <img class="preview-image" id="clothingPreview">
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="tryonBtn">
+                    Try On Virtually
+                </button>
+            </form>
+
+            <!-- Loading State -->
+            <div class="loading" id="loading">
+                <div class="spinner-3d" id="spinner3d"></div>
+                <div class="loading-text">Processing Virtual Try-On<span class="progress-dots"><span>.</span><span>.</span><span>.</span></span></div>
+                <div class="loading-subtext">This may take a few moments...</div>
+            </div>
+
+            <!-- Error Message -->
+            <div class="error" id="error"></div>
+
+            <!-- Results -->
+            <div class="results" id="results">
+                <h2>Your Virtual Try-On Result</h2>
+                <div style="text-align: center; margin-top: 30px;">
+                    <img id="resultImage" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+                    <div style="margin-top: 25px;">
+                        <a id="downloadBtn" class="submit-btn" style="display: inline-block; text-decoration: none; max-width: 300px;">
+                            📥 Download Result
+                        </a>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <button class="back-btn" onclick="location.reload()" style="border: none; cursor: pointer;">
+                            Try Another Outfit
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Gender/Clothing Type Selection
+    const clothingOptions = document.querySelectorAll('.gender-option');
+    clothingOptions.forEach(option => {
+        option.addEventListener('click', function() {
+            clothingOptions.forEach(opt => opt.classList.remove('selected'));
+            this.classList.add('selected');
+            this.querySelector('input').checked = true;
+        });
+    });
+
+    // File Upload Handlers
+    const personUploadBox = document.getElementById('personUploadBox');
+    const clothingUploadBox = document.getElementById('clothingUploadBox');
+    const personInput = document.getElementById('personImage');
+    const clothingInput = document.getElementById('clothingImage');
+
+    personUploadBox.addEventListener('click', () => personInput.click());
+    clothingUploadBox.addEventListener('click', () => clothingInput.click());
+
+    personInput.addEventListener('change', function(e) {
+        handleFileSelect(e, 'person');
+    });
+
+    clothingInput.addEventListener('change', function(e) {
+        handleFileSelect(e, 'clothing');
+    });
+
+    function handleFileSelect(e, type) {
+        const file = e.target.files[0];
+        if (file) {
+            const box = type === 'person' ? personUploadBox : clothingUploadBox;
+            const fileName = type === 'person' ? document.getElementById('personFileName') : document.getElementById('clothingFileName');
+            const preview = type === 'person' ? document.getElementById('personPreview') : document.getElementById('clothingPreview');
+            
+            box.classList.add('has-file');
+            fileName.textContent = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    // 3D Spinner Animation
+    let scene, camera, renderer, cube;
+    
+    function init3DSpinner() {
+        const container = document.getElementById('spinner3d');
+        if (!container) return;
+
+        scene = new THREE.Scene();
+        camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+        renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        
+        renderer.setSize(180, 180);
+        container.innerHTML = '';
+        container.appendChild(renderer.domElement);
+
+        const geometry = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+        const material = new THREE.MeshPhongMaterial({
+            color: 0x6366f1,
+            shininess: 100,
+            specular: 0x444444
+        });
+        
+        cube = new THREE.Mesh(geometry, material);
+        scene.add(cube);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(1, 1, 1);
+        scene.add(light);
+
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        camera.position.z = 3;
+
+        animate();
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        cube.rotation.x += 0.01;
+        cube.rotation.y += 0.01;
+        renderer.render(scene, camera);
+    }
+
+    // Form Submission
+    const form = document.getElementById('tryonForm');
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const personFile = personInput.files[0];
+        const clothingFile = clothingInput.files[0];
+
+        if (!personFile || !clothingFile) {
+            showError('Please upload both person and clothing images');
+            return;
+        }
+
+        const clothingType = document.querySelector('input[name="clothing_type"]:checked').value;
+
+        // Show loading
+        document.getElementById('loading').classList.add('active');
+        document.getElementById('error').classList.remove('active');
+        document.getElementById('results').classList.remove('active');
+        document.getElementById('tryonBtn').disabled = true;
+        init3DSpinner();
+
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('person_image', personFile);
+        formData.append('clothing_image', clothingFile);
+        formData.append('clothing_type', clothingType);
+
+        try {
+            const response = await fetch('/virtual-tryon-process', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showResults(data);
+            } else {
+                showError(data.error || 'An error occurred during virtual try-on');
+            }
+        } catch (error) {
+            showError('Network error. Please try again.');
+            console.error('Error:', error);
+        } finally {
+            document.getElementById('loading').classList.remove('active');
+            document.getElementById('tryonBtn').disabled = false;
+        }
+    });
+
+    function showError(message) {
+        const errorDiv = document.getElementById('error');
+        errorDiv.textContent = message;
+        errorDiv.classList.add('active');
+    }
+
+    function showResults(data) {
+        const resultsDiv = document.getElementById('results');
+        const resultImage = document.getElementById('resultImage');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // Display result image
+        resultImage.src = data.result_image_url;
+        
+        // Set download link
+        downloadBtn.href = data.download_url;
+        downloadBtn.download = data.filename;
+
+        resultsDiv.classList.add('active');
+    }
+});
+</script>
+{% endblock %}

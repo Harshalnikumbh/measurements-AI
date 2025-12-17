@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}About Us - AI Body Measurement{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1>About Us</h1>
+        <p>Learn more about our AI-powered body measurement technology</p>
+    </div>
+</section>
+
+<section class="about-section">
+    <div class="container">
+        <div class="about-card">
+            <h2>Our Mission</h2>
+            <p>We are dedicated to revolutionizing the way people measure their bodies. Using advanced AI and computer vision technology, we provide accurate body measurements from simple photos, making custom fitting accessible to everyone.</p>
+        </div>
+
+        <div class="about-card">
+            <h2>How It Works</h2>
+            <p>Our system uses state-of-the-art 3D human mesh recovery (HMR2) technology to analyze your photos. Simply upload front and side view images, enter your height and weight, and our AI will calculate precise measurements for your neck, chest, waist, hips, shoulders, and arms.</p>
+        </div>
+
+        <div class="about-card">
+            <h2>Why Choose Us</h2>
+            <ul class="feature-list">
+                <li>Accurate measurements powered by AI</li>
+                <li>Quick and easy process</li>
+                <li>No special equipment needed</li>
+                <li>Privacy-focused - your images are processed and deleted</li>
+                <li>Perfect for online shopping and custom tailoring</li>
+            </ul>
+        </div>
+
+        <div class="about-card">
+            <h2>Our Technology</h2>
+            <p>We leverage cutting-edge deep learning models including HMR2 (Human Mesh Recovery) and advanced 3D mesh analysis to extract accurate body measurements from 2D images. Our algorithms are trained on extensive datasets to ensure reliability across different body types.</p>
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Body Measurement{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="nav-logo">BodyMeasure AI</a>
+            <ul class="nav-menu">
+                <li><a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">Home</a></li>
+                <li><a href="/about" class="nav-link {% if request.path == '/about' %}active{% endif %}">About Us</a></li>
+                <li><a href="/contact" class="nav-link {% if request.path == '/contact' %}active{% endif %}">Contact</a></li>
+                <li><a href="/virtual-try-on" class="nav-link {% if request.path == '/virtual-try-on' %}active{% endif %}">Virtual Try-On</a></li>
+            </ul>
+            <div class="nav-toggle" id="navToggle">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-section">
+                <h4>BodyMeasure AI</h4>
+                <p>Advanced AI-powered body measurement technology for accurate sizing.</p>
+            </div>
+            <div class="footer-section">
+                <h4>Quick Links</h4>
+                <ul>
+                    <li><a href="/">Home</a></li>
+                    <li><a href="/about">About Us</a></li>
+                    <li><a href="/contact">Contact</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h4>Contact Info</h4>
+                <p>Email: info@bodymeasure.ai</p>
+                <p>Phone: +91 9999999999</p>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 BodyMeasure AI. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- CRITICAL: Load Three.js FIRST before any other scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Then load your main.js -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Page-specific scripts (spinner3d.js and measurement.js will load here) -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

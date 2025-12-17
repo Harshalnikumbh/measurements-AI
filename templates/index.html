@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Home - AI Body Measurement{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="container">
+        <h1>AI Body Measurement System</h1>
+        <p class="subtitle">Upload front & side photos (full body) - Enter your height, weight, and select gender for accurate measurements</p>
+    </div>
+</section>
+
+<section class="measurement-section">
+    <div class="container">
+        <div class="measurement-card">
+            <form id="measurementForm">
+                <div class="form-group">
+                    <label>Select Gender</label>
+                    <div class="gender-select">
+                        <label class="gender-option selected">
+                            <input type="radio" name="gender" value="male" checked>
+                            <span>Male</span>
+                        </label>
+                        <label class="gender-option">
+                            <input type="radio" name="gender" value="female">
+                            <span>Female</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Your Height</label>
+                    <div class="input-row">
+                        <div class="input-box">
+                            <input type="number" name="height" id="heightInput" placeholder="Height (e.g., 170)" required step="0.1">
+                        </div>
+                        <div class="input-box">
+                            <select name="height_unit" id="heightUnit">
+                                <option value="cm">Centimeters (cm)</option>
+                                <option value="m">Meters (m)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Your Weight</label>
+                    <div class="input-row">
+                        <div class="input-box">
+                            <input type="number" name="weight" id="weightInput" placeholder="Weight (e.g., 65)" required step="0.1">
+                        </div>
+                        <div class="input-box">
+                            <select name="weight_unit" id="weightUnit">
+                                <option value="kg">Kilograms (kg)</option>
+                                <option value="lbs">Pounds (lbs)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="upload-section">
+                    <div class="upload-box" id="frontUpload">
+                        <input type="file" id="frontImage" name="front_image" accept="image/*" required>
+                        <img src="{{ url_for('static', filename='front_icon.png') }}" alt="Front View" class="upload-icon-img">
+                        <div><strong>Front View</strong><br>Click to upload</div>
+                        <div class="file-name" id="frontFileName"></div>
+                        <img class="preview-image" id="frontPreview">
+                    </div>
+
+                    <div class="upload-box" id="sideUpload">
+                        <input type="file" id="sideImage" name="side_image" accept="image/*" required>
+                        <img src="{{ url_for('static', filename='side_icon.png') }}" alt="Side View" class="upload-icon-img">
+                        <div><strong>Side View</strong><br>Click to upload</div>
+                        <div class="file-name" id="sideFileName"></div>
+                        <img class="preview-image" id="sidePreview">
+                    </div>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">Calculate Measurements</button>
+            </form>
+
+            <div class="loading" id="loading">
+                <div id="spinner3d" class="spinner-3d"></div>
+                <p class="loading-text">
+                    Processing your images<span class="progress-dots"><span>.</span><span>.</span><span>.</span></span>
+                </p>
+                <p class="loading-subtext">Analyzing body measurements...</p>
+            </div>
+
+            <div class="error" id="error"></div>
+
+            <div class="results" id="results">
+                <h2>Your Body Measurements</h2>
+                
+                <div class="measurement-grid">
+                    <!-- BMI Card -->
+                    <div class="result-card bmi-card">
+                        <div class="result-label">📊 BMI</div>
+                        <div class="result-value" id="bmiValue">-</div>
+                        <div class="result-category" id="bmiCategory">-</div>
+                    </div>
+
+                    <!-- Body Type Card -->
+                    <div class="result-card body-type-card">
+                        <div class="result-label">👤 Body Type</div>
+                        <div class="result-value body-type-value" id="bodyType">-</div>
+                    </div>
+<!-- 
+                    Height Card
+                    <div class="result-card">
+                        <div class="result-label">Height</div>
+                        <div class="result-value" id="heightDisplayCm">-</div>
+                        <div class="result-unit">cm (<span id="heightDisplayIn">-</span> in)</div>
+                    </div> -->
+
+                    <!-- Weight Card -->
+                    <!-- <div class="result-card">
+                        <div class="result-label">Weight</div>
+                        <div class="result-value" id="weightDisplayKg">-</div>
+                        <div class="result-unit">kg (<span id="weightDisplayLbs">-</span> lbs)</div>
+                    </div> -->
+
+                    <!-- Neck -->
+                    <div class="result-card">
+                        <div class="result-label">Neck Circumference</div>
+                        <div class="result-value" id="neckCircCm">-</div>
+                        <div class="result-unit">cm (<span id="neckCircIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Chest -->
+                    <div class="result-card">
+                        <div class="result-label">Chest Circumference</div>
+                        <div class="result-value" id="chestCircCm">-</div>
+                        <div class="result-unit">cm (<span id="chestCircIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Waist -->
+                    <div class="result-card">
+                        <div class="result-label">Waist Circumference</div>
+                        <div class="result-value" id="waistCircCm">-</div>
+                        <div class="result-unit">cm (<span id="waistCircIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Hip -->
+                    <div class="result-card">
+                        <div class="result-label">Hip Circumference</div>
+                        <div class="result-value" id="hipCircCm">-</div>
+                        <div class="result-unit">cm (<span id="hipCircIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Shoulder -->
+                    <div class="result-card">
+                        <div class="result-label">Shoulder Width</div>
+                        <div class="result-value" id="shoulderWidthCm">-</div>
+                        <div class="result-unit">cm (<span id="shoulderWidthIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Hand to Elbow -->
+                    <div class="result-card">
+                        <div class="result-label">Hand to Elbow</div>
+                        <div class="result-value" id="armHandCm">-</div>
+                        <div class="result-unit">cm (<span id="armHandIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Shoulder to Elbow -->
+                    <div class="result-card">
+                        <div class="result-label">Shoulder to Elbow</div>
+                        <div class="result-value" id="armShoulderCm">-</div>
+                        <div class="result-unit">cm (<span id="armShoulderIn">-</span> in)</div>
+                    </div>
+
+                    <!-- Total Arm Length -->
+                    <div class="result-card">
+                        <div class="result-label">Total Arm Length</div>
+                        <div class="result-value" id="armTotalCm">-</div>
+                        <div class="result-unit">cm (<span id="armTotalIn">-</span> in)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/spinner3d.js') }}"></script>
+<script src="{{ url_for('static', filename='js/measurement.js') }}"></script>
+{% endblock %}
