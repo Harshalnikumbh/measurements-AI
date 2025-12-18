@@ -60,6 +60,66 @@ def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# --- Clothing Size Recommendation Class ---
+# --- Clothing Size Recommendation Class ---
+
+class ClothingSizeRecommender:
+    """Recommend clothing size based on body measurements."""
+    
+    # Standard size chart (measurements in inches)
+    SIZE_CHART = {
+        'XS': {'chest': (30, 32), 'waist': (24, 26), 'hips': (32, 34)},
+        'S': {'chest': (34, 36), 'waist': (26, 28), 'hips': (36, 38)},
+        'M': {'chest': (36, 38), 'waist': (28, 30), 'hips': (38, 40)},
+        'L': {'chest': (38, 40), 'waist': (30, 32), 'hips': (40, 42)},
+        'XL': {'chest': (40, 42), 'waist': (32, 34), 'hips': (42, 44)},
+        'XXL': {'chest': (42, 46), 'waist': (34, 38), 'hips': (44, 48)},
+        'XXXL': {'chest': (46, 50), 'waist': (38, 42), 'hips': (48, 52)}
+    }
+    
+    @staticmethod
+    def recommend_size(chest_in, waist_in, hip_in):
+        """
+        Recommend clothing size based on the average of measurements in inches.
+        Always returns a size - never None or empty.
+        """
+        # Input validation - ensure we have valid measurements
+        if not all([chest_in > 0, waist_in > 0, hip_in > 0]):
+            return 'M'  # Default size for invalid inputs
+        
+        # Calculate the average of all three measurements
+        avg_measurement = (chest_in + waist_in + hip_in) / 3
+        
+        # Additional check: if average is below XS range, recommend XS
+        if avg_measurement < 29:
+            return 'XS'
+        # If average is above XXXL range, recommend XXXL
+        elif avg_measurement > 47:
+            return 'XXXL'
+        
+        # Find the size where the average falls within or closest to the ranges
+        best_size = 'M'  # Default fallback
+        min_distance = float('inf')
+        
+        for size, ranges in ClothingSizeRecommender.SIZE_CHART.items():
+            # Calculate the midpoint of each range
+            chest_mid = (ranges['chest'][0] + ranges['chest'][1]) / 2
+            waist_mid = (ranges['waist'][0] + ranges['waist'][1]) / 2
+            hip_mid = (ranges['hips'][0] + ranges['hips'][1]) / 2
+            
+            # Calculate the average of the midpoints for this size
+            size_avg_mid = (chest_mid + waist_mid + hip_mid) / 3
+            
+            # Calculate distance from the user's average to this size's average
+            distance = abs(avg_measurement - size_avg_mid)
+            
+            if distance < min_distance:
+                min_distance = distance
+                best_size = size
+        
+        return best_size
+    
+
 # --- Virtual Try-On Functions ---
 
 class VirtualTryOnService:
@@ -168,7 +228,7 @@ class VirtualTryOnService:
         
         return save_path
 
-# --- BMI and Body Type Classes (keeping existing code) ---
+# --- BMI and Body Type Classes ---
 
 class BodyTypeClassifier:
     """Classify body type based on measurements and characteristics."""
@@ -329,7 +389,7 @@ class MeasurementCorrector:
         
         return corrected
 
-# --- Measurement Calculation Class (keeping existing code) ---
+# --- Measurement Calculation Class ---
 
 class CompleteBodyMeasurementsCalculator:
     """Enhanced calculator with BMI and body type corrections."""
@@ -541,6 +601,13 @@ class CompleteBodyMeasurementsCalculator:
             results, self.gender, body_type, self.bmi_category
         )
         
+        # Calculate recommended clothing size
+        recommended_size = ClothingSizeRecommender.recommend_size(
+            results['chest']['circumference']['inches'],
+            results['waist']['circumference']['inches'],
+            results['hip']['circumference']['inches']
+        )
+        
         # Arm sections
         total_arm = 0.36 * self.height
         hand, shoulder = self.compute_arm_sections(total_arm)
@@ -557,13 +624,14 @@ class CompleteBodyMeasurementsCalculator:
             'bmi': self.bmi,
             'bmi_category': self.bmi_category,
             'body_type': body_type,
+            'recommended_size': recommended_size,
             'height': {'cm': self.height, 'inches': round(self.height * cm_to_in, 2)},
             'weight': {'kg': self.weight, 'lbs': round(self.weight * 2.20462, 2)}
         }
         
         return results
 
-# --- HMR2 Processing Function (keeping existing code) ---
+# --- HMR2 Processing Function ---
 
 def process_image_to_mesh(img_path, output_path, model, detector, renderer, model_cfg):
     """Process image to 3D mesh using HMR2."""
@@ -603,7 +671,7 @@ def process_image_to_mesh(img_path, output_path, model, detector, renderer, mode
         
     return None
 
-# --- HMR2 Model Initialization (keeping existing code) ---
+# --- HMR2 Model Initialization ---
 
 model = None
 model_cfg = None
@@ -810,7 +878,6 @@ def process():
             return jsonify({'success': False, 'error': 'Error calculating measurements'})
         
         # Cleanup
-        
         for f in [front_path, side_path]:
             if os.path.exists(f):
                 os.remove(f)
@@ -822,4 +889,3 @@ def process():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
-    
