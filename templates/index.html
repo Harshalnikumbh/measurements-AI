@@ -105,20 +105,13 @@
                         <div class="result-label">👤 Body Type</div>
                         <div class="result-value body-type-value" id="bodyType">-</div>
                     </div>
-<!-- 
-                    Height Card
-                    <div class="result-card">
-                        <div class="result-label">Height</div>
-                        <div class="result-value" id="heightDisplayCm">-</div>
-                        <div class="result-unit">cm (<span id="heightDisplayIn">-</span> in)</div>
-                    </div> -->
 
-                    <!-- Weight Card -->
-                    <!-- <div class="result-card">
-                        <div class="result-label">Weight</div>
-                        <div class="result-value" id="weightDisplayKg">-</div>
-                        <div class="result-unit">kg (<span id="weightDisplayLbs">-</span> lbs)</div>
-                    </div> -->
+                    <!-- Recommended Size Card - NEW -->
+                    <div class="result-card size-card">
+                        <div class="result-label">👕 Recommended Size</div>
+                        <div class="result-value size-value" id="recommendedSize">-</div>
+                        <div class="size-note">Based on standard sizing</div>
+                    </div>
 
                     <!-- Neck -->
                     <div class="result-card">
@@ -180,9 +173,139 @@
         </div>
     </div>
 </section>
+
+<style>
+/* Size Card Styling */
+.size-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+}
+
+.size-card .result-label {
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.9em;
+    margin-bottom: 10px;
+}
+
+.size-value {
+    font-size: 2.5em !important;
+    font-weight: 700 !important;
+    color: white !important;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
+    letter-spacing: 2px;
+}
+
+.size-note {
+    font-size: 0.75em;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 5px;
+    font-style: italic;
+}
+
+/* Size Chart Table Styling */
+.size-chart-container {
+    margin-top: 40px;
+    padding: 30px;
+    background: #f8f9fa;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.size-chart-container h3 {
+    color: #2c3e50;
+    margin-bottom: 10px;
+    font-size: 1.5em;
+}
+
+.chart-note {
+    color: #7f8c8d;
+    font-size: 0.9em;
+    margin-bottom: 20px;
+    font-style: italic;
+}
+
+.size-chart-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.size-chart-table thead {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.size-chart-table th,
+.size-chart-table td {
+    padding: 15px;
+    text-align: center;
+    border-bottom: 1px solid #ecf0f1;
+}
+
+.size-chart-table th {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.9em;
+    letter-spacing: 0.5px;
+}
+
+.size-chart-table tbody tr:hover {
+    background: #f8f9fa;
+}
+
+.size-chart-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.size-chart-table td:first-child {
+    font-weight: 600;
+    color: #667eea;
+    font-size: 1.1em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .size-chart-table {
+        font-size: 0.85em;
+    }
+    
+    .size-chart-table th,
+    .size-chart-table td {
+        padding: 10px 5px;
+    }
+    
+    .size-value {
+        font-size: 2em !important;
+    }
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/spinner3d.js') }}"></script>
 <script src="{{ url_for('static', filename='js/measurement.js') }}"></script>
+
+<script>
+// Update the displayResults function to include recommended size
+document.addEventListener('DOMContentLoaded', function() {
+    const originalDisplayResults = window.displayResults;
+    
+    window.displayResults = function(data) {
+        // Call original function
+        if (originalDisplayResults) {
+            originalDisplayResults(data);
+        }
+        
+        // Add recommended size display
+        const meta = data.metadata;
+        if (meta && meta.recommended_size) {
+            document.getElementById('recommendedSize').textContent = meta.recommended_size;
+        }
+    };
+});
+</script>
 {% endblock %}
