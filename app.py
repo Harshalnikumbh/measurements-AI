@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template, send_file
 import os
 import torch
 import cv2
+import joblib
 import numpy as np
 from pathlib import Path
 from werkzeug.utils import secure_filename
@@ -40,6 +41,14 @@ device = torch.device('cpu')
 
 # --- Flask App Configuration ---
 app = Flask(__name__)
+ML_MODEL_AVAILABLE = True
+try:
+    SIZE_MODEL = joblib.load("size_model.joblib")
+    SCALER = joblib.load("scaler.joblib")
+    GENDER_ENCODER = joblib.load("gender_encoder.joblib")
+except Exception as e:
+    print("ML Size model not loaded:", e)
+    ML_MODEL_AVAILABLE = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
 app.config['TRYON_FOLDER'] = 'tryon_results'
@@ -60,7 +69,6 @@ def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# --- Clothing Size Recommendation Class ---
 # --- Clothing Size Recommendation Class ---
 
 class ClothingSizeRecommender:
@@ -118,7 +126,6 @@ class ClothingSizeRecommender:
                 best_size = size
         
         return best_size
-    
 
 # --- Virtual Try-On Functions ---
 
@@ -128,63 +135,110 @@ class VirtualTryOnService:
     @staticmethod
     def get_upload_url(image_path):
         """Get upload URL from LightX API."""
-        size = os.path.getsize(image_path)
-        
-        payload = {
-            "uploadType": "imageUrl",
-            "size": size,
-            "contentType": CONTENT_TYPE
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": LIGHTX_API_KEY
-        }
-        
-        res = requests.post(
-            f"{LIGHTX_BASE_URL}/uploadImageUrl",
-            json=payload,
-            headers=headers
-        )
-        
-        res.raise_for_status()
-        body = res.json()["body"]
-        
-        return body["uploadImage"], body["imageUrl"]
+        try:
+            size = os.path.getsize(image_path)
+            
+            payload = {
+                "uploadType": "imageUrl",
+                "size": size,
+                "contentType": CONTENT_TYPE
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": LIGHTX_API_KEY
+            }
+            
+            res = requests.post(
+                f"{LIGHTX_BASE_URL}/uploadImageUrl",
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            res.raise_for_status()
+            
+            # Parse response
+            response_data = res.json()
+            
+            # Check if response has expected structure
+            if not response_data or "body" not in response_data:
+                raise ValueError(f"Invalid API response structure: {response_data}")
+            
+            body = response_data["body"]
+            
+            if "uploadImage" not in body or "imageUrl" not in body:
+                raise ValueError(f"Missing required fields in response body: {body}")
+            
+            return body["uploadImage"], body["imageUrl"]
+            
+        except requests.exceptions.Timeout:
+            raise TimeoutError("Request to LightX API timed out")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to get upload URL: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise RuntimeError(f"Invalid response from API: {str(e)}")
     
     @staticmethod
     def upload_image(upload_url, image_path):
         """Upload image to the provided URL."""
-        with open(image_path, "rb") as f:
-            res = requests.put(
-                upload_url,
-                data=f,
-                headers={"Content-Type": CONTENT_TYPE}
-            )
-        res.raise_for_status()
+        try:
+            with open(image_path, "rb") as f:
+                res = requests.put(
+                    upload_url,
+                    data=f,
+                    headers={"Content-Type": CONTENT_TYPE},
+                    timeout=60
+                )
+            res.raise_for_status()
+        except requests.exceptions.Timeout:
+            raise TimeoutError("Image upload timed out")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to upload image: {str(e)}")
     
     @staticmethod
     def start_virtual_tryon(person_url, outfit_url, segmentation_type=0):
         """Start virtual try-on process."""
-        payload = {
-            "imageUrl": person_url,
-            "outfitImageUrl": outfit_url,
-            "segmentationType": segmentation_type
-        }
-        
-        headers = {
-            "Content-Type": "application/json",
-            "x-api-key": LIGHTX_API_KEY
-        }
-        
-        res = requests.post(
-            f"{LIGHTX_BASE_URL}/aivirtualtryon",
-            json=payload,
-            headers=headers
-        )
-        
-        res.raise_for_status()
-        return res.json()["body"]["orderId"]
+        try:
+            payload = {
+                "imageUrl": person_url,
+                "outfitImageUrl": outfit_url,
+                "segmentationType": segmentation_type
+            }
+            
+            headers = {
+                "Content-Type": "application/json",
+                "x-api-key": LIGHTX_API_KEY
+            }
+            
+            res = requests.post(
+                f"{LIGHTX_BASE_URL}/aivirtualtryon",
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            
+            res.raise_for_status()
+            
+            # Parse response
+            response_data = res.json()
+            
+            if not response_data or "body" not in response_data:
+                raise ValueError(f"Invalid API response structure: {response_data}")
+            
+            body = response_data["body"]
+            
+            if "orderId" not in body:
+                raise ValueError(f"Missing orderId in response: {body}")
+            
+            return body["orderId"]
+            
+        except requests.exceptions.Timeout:
+            raise TimeoutError("Request to start virtual try-on timed out")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to start virtual try-on: {str(e)}")
+        except (KeyError, ValueError) as e:
+            raise RuntimeError(f"Invalid response from API: {str(e)}")
     
     @staticmethod
     def check_status(order_id, max_attempts=60):
@@ -197,36 +251,99 @@ class VirtualTryOnService:
         payload = {"orderId": order_id}
         
         for i in range(max_attempts):
-            time.sleep(3)
-            
-            res = requests.post(
-                f"{LIGHTX_BASE_URL}/order-status",
-                json=payload,
-                headers=headers
-            )
-            
-            res.raise_for_status()
-            body = res.json()["body"]
-            
-            if body["status"] == "active":
-                return body["output"]
-            
-            if body["status"] == "failed":
-                raise RuntimeError("Virtual try-on failed")
+            try:
+                time.sleep(3)
+                
+                res = requests.post(
+                    f"{LIGHTX_BASE_URL}/order-status",
+                    json=payload,
+                    headers=headers,
+                    timeout=30
+                )
+                
+                res.raise_for_status()
+                
+                # Parse response
+                response_data = res.json()
+                
+                if not response_data or "body" not in response_data:
+                    print(f"Warning: Invalid response structure on attempt {i+1}: {response_data}")
+                    continue
+                
+                body = response_data["body"]
+                
+                if "status" not in body:
+                    print(f"Warning: Missing status field on attempt {i+1}: {body}")
+                    continue
+                
+                status = body["status"]
+                print(f"Status check {i+1}/{max_attempts}: {status}")
+                
+                if status == "active":
+                    if "output" not in body:
+                        raise ValueError("Status is active but output is missing")
+                    
+                    output = body["output"]
+                    
+                    # Handle different output formats
+                    if isinstance(output, dict):
+                        # If output is a dict, look for URL in common keys
+                        result_url = output.get("url") or output.get("imageUrl") or output.get("resultUrl")
+                        if not result_url:
+                            raise ValueError(f"Output is a dict but no URL found: {output}")
+                        return result_url
+                    elif isinstance(output, str):
+                        # If output is a string, assume it's the URL
+                        return output
+                    else:
+                        raise ValueError(f"Unexpected output format: {type(output)}")
+                
+                elif status == "failed":
+                    error_msg = body.get("error", body.get("message", "Unknown error"))
+                    raise RuntimeError(f"Virtual try-on failed: {error_msg}")
+                
+                elif status in ["pending", "processing", "queued"]:
+                    # Status is still processing, continue polling
+                    continue
+                else:
+                    print(f"Warning: Unknown status '{status}' on attempt {i+1}")
+                    continue
+                    
+            except requests.exceptions.Timeout:
+                print(f"Timeout on status check attempt {i+1}/{max_attempts}")
+                if i == max_attempts - 1:
+                    raise TimeoutError(f"Status check timed out after {max_attempts} attempts")
+                continue
+            except requests.exceptions.RequestException as e:
+                print(f"Request error on attempt {i+1}/{max_attempts}: {str(e)}")
+                if i == max_attempts - 1:
+                    raise RuntimeError(f"Failed to check status after {max_attempts} attempts: {str(e)}")
+                continue
+            except (KeyError, ValueError) as e:
+                print(f"Parse error on attempt {i+1}/{max_attempts}: {str(e)}")
+                if i == max_attempts - 1:
+                    raise RuntimeError(f"Invalid response format: {str(e)}")
+                continue
         
-        raise TimeoutError("Virtual try-on timed out")
+        raise TimeoutError(f"Virtual try-on timed out after {max_attempts * 3} seconds")
     
     @staticmethod
     def download_result_image(image_url, save_path):
         """Download the result image from URL."""
-        response = requests.get(image_url, stream=True)
-        response.raise_for_status()
-        
-        with open(save_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        
-        return save_path
+        try:
+            response = requests.get(image_url, stream=True, timeout=60)
+            response.raise_for_status()
+            
+            with open(save_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            return save_path
+            
+        except requests.exceptions.Timeout:
+            raise TimeoutError("Download of result image timed out")
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Failed to download result image: {str(e)}")
 
 # --- BMI and Body Type Classes ---
 
@@ -388,7 +505,30 @@ class MeasurementCorrector:
                 )
         
         return corrected
+    
+# --- ML Size Prediction Function ---
+def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
+    if not ML_MODEL_AVAILABLE:
+        return None
+    try:
+        gender_encoded = GENDER_ENCODER.transform([gender])[0]
 
+        # IMPORTANT: feature order must match training
+        X = np.array([[
+            height_cm,
+            chest_cm,
+            waist_cm,
+            hip_cm,
+            gender_encoded
+        ]])
+
+        X_scaled = SCALER.transform(X)
+        return SIZE_MODEL.predict(X_scaled)[0]
+
+    except Exception as e:
+        print("ML prediction failed:", e)
+        return None
+    
 # --- Measurement Calculation Class ---
 
 class CompleteBodyMeasurementsCalculator:
@@ -602,11 +742,24 @@ class CompleteBodyMeasurementsCalculator:
         )
         
         # Calculate recommended clothing size
-        recommended_size = ClothingSizeRecommender.recommend_size(
-            results['chest']['circumference']['inches'],
-            results['waist']['circumference']['inches'],
-            results['hip']['circumference']['inches']
+        chest_cm = results['chest']['circumference']['cm']
+        waist_cm = results['waist']['circumference']['cm']
+        hip_cm   = results['hip']['circumference']['cm']
+
+        ml_size = predict_size_ml(
+                    self.height,
+                    chest_cm,
+                    waist_cm,
+                    hip_cm,
+                    self.gender
         )
+        chest_in = chest_cm * 0.393701
+        waist_in = waist_cm * 0.393701
+        hip_in   = hip_cm * 0.393701
+
+        recommended_size = ml_size if ml_size else ClothingSizeRecommender.recommend_size(
+                            chest_in, waist_in, hip_in
+                            )
         
         # Arm sections
         total_arm = 0.36 * self.height
@@ -718,6 +871,9 @@ def virtual_try_on():
 @app.route('/virtual-tryon-process', methods=['POST'])
 def virtual_tryon_process():
     """Process virtual try-on request."""
+    person_path = None
+    clothing_path = None
+    
     try:
         # Check for uploaded files
         if 'person_image' not in request.files or 'clothing_image' not in request.files:
@@ -752,12 +908,18 @@ def virtual_tryon_process():
         # Step 1: Get upload URLs
         print("Getting upload URLs...")
         person_upload_url, person_image_url = tryon_service.get_upload_url(person_path)
+        print(f"Person image URL obtained: {person_image_url[:50]}...")
+        
         clothing_upload_url, clothing_image_url = tryon_service.get_upload_url(clothing_path)
+        print(f"Clothing image URL obtained: {clothing_image_url[:50]}...")
         
         # Step 2: Upload images
         print("Uploading images to LightX API...")
         tryon_service.upload_image(person_upload_url, person_path)
+        print("Person image uploaded successfully")
+        
         tryon_service.upload_image(clothing_upload_url, clothing_path)
+        print("Clothing image uploaded successfully")
         
         # Step 3: Start virtual try-on
         print("Starting virtual try-on...")
@@ -766,20 +928,18 @@ def virtual_tryon_process():
             clothing_image_url, 
             clothing_type
         )
+        print(f"Virtual try-on started with order ID: {order_id}")
         
         # Step 4: Check status and get result
         print(f"Checking status for order: {order_id}")
         result_url = tryon_service.check_status(order_id)
+        print(f"Result URL obtained: {result_url[:50]}...")
         
         # Step 5: Download result image
         result_filename = f"tryon_result_{timestamp}.jpg"
         result_path = os.path.join(app.config['TRYON_FOLDER'], result_filename)
         tryon_service.download_result_image(result_url, result_path)
-        
-        # Cleanup uploaded files
-        for f in [person_path, clothing_path]:
-            if os.path.exists(f):
-                os.remove(f)
+        print(f"Result image saved to: {result_path}")
         
         # Return success with result
         return jsonify({
@@ -790,12 +950,28 @@ def virtual_tryon_process():
         })
         
     except requests.exceptions.RequestException as e:
+        print(f"API request failed: {str(e)}")
         return jsonify({'success': False, 'error': f'API request failed: {str(e)}'})
-    except TimeoutError:
-        return jsonify({'success': False, 'error': 'Virtual try-on processing timed out. Please try again.'})
+    except TimeoutError as e:
+        print(f"Timeout error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
+    except RuntimeError as e:
+        print(f"Runtime error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
-        return jsonify({'success': False, 'error': f'An error occurred: {str(e)}'})
-
+        print(f"Unexpected error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': f'An unexpected error occurred: {str(e)}'})
+    finally:
+        # Cleanup uploaded files
+        for file_path in [person_path, clothing_path]:
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    print(f"Cleaned up: {file_path}")
+                except Exception as e:
+                    print(f"Failed to cleanup {file_path}: {str(e)}")
 
 @app.route('/tryon-result/<filename>')
 def serve_tryon_result(filename):
