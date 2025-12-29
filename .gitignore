@@ -1,0 +1,74 @@
+# ===============================
+# Python
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===============================
+# Virtual environments
+# ===============================
+venv/
+ENV/
+env/
+.venv/
+presidio-env/
+
+# ===============================
+# IDE
+# ===============================
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===============================
+# Project specific (added)
+# ===============================
+uploads/
+output/
+tryon_results/
+
+cloth_web.jpg
+jay.jpg
+jay_side.jpg
+man_bending.png
+
+pose_validation.py
+wrapper.py
+code.txt
+virtual_tryon.txt
+
+training_ML.ipynb
+
+*.obj
+*.log
+
+# ===============================
+# Environment
+# ===============================
+.env
+.env.local
+
+# ===============================
+# Cache
+# ===============================
+.cache/
+*.cache
