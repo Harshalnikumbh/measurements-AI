@@ -5,12 +5,31 @@ import time
 import torch
 import joblib
 import trimesh
+import logging
 import requests
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template, send_file
+
+# Define a central logger for the application
+logger = logging.getLogger('BodyApp')
+logger.setLevel(logging.INFO) # Set default logging level
+
+# Create a console handler and set the level to INFO
+ch = logging.StreamHandler()
+ch.setLevel(logging.INFO)
+
+# Create a formatter and add it to the handler
+formatter = logging.Formatter(
+    '[%(asctime)s] [%(levelname)s] [%(name)s.%(funcName)s] - %(message)s'
+)
+ch.setFormatter(formatter)
+
+# Add the handler to the logger (avoid duplicate handlers if re-running in interactive env)
+if not logger.handlers:
+    logger.addHandler(ch)
 
 # MediaPipe for pose detection
 try:
@@ -35,9 +54,9 @@ try:
     from detectron2.config import LazyConfig
     import hmr2
     HMR2_AVAILABLE = True
+    logger.info("HMR2 and Detectron2 successfully imported.")
 except ImportError as e:
-    print(f"HMR2 not available: {e}")
-    print("The application will run in UI-only mode. Install HMR2 for full functionality.")
+    logger.warning(f"HMR2 or Detectron2 not available: {e}. HMR2 functionalities will be disabled.")
 
 # Force CPU loading for PyTorch models
 _original_load = torch.load
@@ -46,6 +65,7 @@ def cpu_load(*args, **kwargs):
     return _original_load(*args, **kwargs)
 torch.load = cpu_load
 device = torch.device('cpu')
+logger.info(f"Using device: {device}")
 
 # --- Flask App Configuration ---
 app = Flask(__name__)
@@ -54,8 +74,9 @@ try:
     SIZE_MODEL = joblib.load("size_model.joblib")
     SCALER = joblib.load("scaler.joblib")
     GENDER_ENCODER = joblib.load("gender_encoder.joblib")
+    logger.info("ML Size models (joblib) loaded successfully.")
 except Exception as e:
-    print("ML Size model not loaded:", e)
+    logger.warning(f"ML Size models could not be loaded: {e}. ML size prediction will be disabled.")    
     ML_MODEL_AVAILABLE = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
@@ -65,6 +86,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB limit
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TRYON_FOLDER'], exist_ok=True)
+logger.info("Upload, output, and try-on result folders are set up.")
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -86,6 +108,7 @@ class PoseValidator:
     
     def __init__(self):
         if not MEDIAPIPE_AVAILABLE:
+            logger.critical("Attempted to instantiate PoseValidator but MediaPipe is not available.")
             raise RuntimeError("MediaPipe is not available for pose validation")
         self.mp_pose = mp.solutions.pose
     
@@ -107,8 +130,10 @@ class PoseValidator:
     
     def load_pose_landmarks(self, image_path):
         """Load and detect pose landmarks from an image."""
+        logger.debug(f"Loading image for pose detection: {image_path}")
         image = cv2.imread(image_path)
         if image is None:
+            logger.error(f"Image load failed for: {image_path}")
             raise ValueError(f"Could not load image: {image_path}")
         
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -117,6 +142,7 @@ class PoseValidator:
             result = pose.process(image_rgb)
         
         if not result.pose_landmarks:
+            logger.error(f"No person detected in image: {image_path}")
             raise ValueError("No person detected in the image")
         
         return result.pose_landmarks.landmark
@@ -163,8 +189,10 @@ class PoseValidator:
             return is_accepted, angle, message
             
         except ValueError as e:
+            logger.error(f"Front view error: {str(e)}")
             raise ValueError(f"Front view error: {str(e)}")
         except Exception as e:
+            logger.critical(f"Unexpected error in front view validation: {str(e)}")
             raise RuntimeError(f"Unexpected error in front view validation: {str(e)}")
     
     def check_side_view(self, image_path):
@@ -206,8 +234,10 @@ class PoseValidator:
             return is_accepted, angle, message
             
         except ValueError as e:
+            logger.error(f"Side view error: {str(e)}")
             raise ValueError(f"Side view error: {str(e)}")
         except Exception as e:
+            logger.critical(f"Unexpected error in side view validation: {str(e)}")
             raise RuntimeError(f"Unexpected error in side view validation: {str(e)}")
     
     def validate_images(self, front_image_path, side_image_path):
@@ -234,6 +264,7 @@ class PoseValidator:
         except Exception as e:
             results['errors'].append(f"Front image: {str(e)}")
             results['front_message'] = f"Front image error: {str(e)}"
+            logger.error(f"Front view validation failed: {str(e)}")
         
         # Check side view
         try:
@@ -244,6 +275,7 @@ class PoseValidator:
         except Exception as e:
             results['errors'].append(f"Side image: {str(e)}")
             results['side_message'] = f"Side image error: {str(e)}"
+            logger.error(f"Side view validation failed: {str(e)}")
         
         # Overall success requires both images to be accepted
         overall_success = results['front_accepted'] and results['side_accepted'] and len(results['errors']) == 0
@@ -272,8 +304,10 @@ class ClothingSizeRecommender:
         Recommend clothing size based on the average of measurements in inches.
         Always returns a size - never None or empty.
         """
+        logger.info(f"Recommending size for measurements (inches) - Chest: {chest_in}, Waist: {waist_in}, Hips: {hip_in}")
         # Input validation - ensure we have valid measurements
         if not all([chest_in > 0, waist_in > 0, hip_in > 0]):
+            logger.warning("Invalid measurements provided for size recommendation.")
             return 'M'  # Default size for invalid inputs
         
         # Calculate the average of all three measurements
@@ -316,6 +350,7 @@ class VirtualTryOnService:
     @staticmethod
     def get_upload_url(image_path):
         """Get upload URL from LightX API."""
+        logger.debug(f"Requesting upload URL for image: {image_path}")
         try:
             size = os.path.getsize(image_path)
             
@@ -344,24 +379,30 @@ class VirtualTryOnService:
             
             # Check if response has expected structure
             if not response_data or "body" not in response_data:
+                logger.error(f"Invalid API response structure: {response_data}")
                 raise ValueError(f"Invalid API response structure: {response_data}")
             
             body = response_data["body"]
             
             if "uploadImage" not in body or "imageUrl" not in body:
+                logger.error(f"Missing required fields in response body: {body}")
                 raise ValueError(f"Missing required fields in response body: {body}")
             
             return body["uploadImage"], body["imageUrl"]
             
         except requests.exceptions.Timeout:
+            logger.error("Request to LightX API timed out")
             raise TimeoutError("Request to LightX API timed out")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to get upload URL: {str(e)}")
             raise RuntimeError(f"Failed to get upload URL: {str(e)}")
         except (KeyError, ValueError) as e:
+            logger.error(f"Invalid response from API: {str(e)}")
             raise RuntimeError(f"Invalid response from API: {str(e)}")
     
     @staticmethod
     def upload_image(upload_url, image_path):
+        logger.debug(f"Uploading image to URL: {upload_url}")
         """Upload image to the provided URL."""
         try:
             with open(image_path, "rb") as f:
@@ -372,14 +413,18 @@ class VirtualTryOnService:
                     timeout=60
                 )
             res.raise_for_status()
+            logger.debug("Image uploaded successfully.")
         except requests.exceptions.Timeout:
+            logger.error("Image upload timed out")
             raise TimeoutError("Image upload timed out")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to upload image: {str(e)}")
             raise RuntimeError(f"Failed to upload image: {str(e)}")
     
     @staticmethod
     def start_virtual_tryon(person_url, outfit_url, segmentation_type=0):
         """Start virtual try-on process."""
+        logger.debug("Starting virtual try-on process.")
         try:
             payload = {
                 "imageUrl": person_url,
@@ -405,24 +450,30 @@ class VirtualTryOnService:
             response_data = res.json()
             
             if not response_data or "body" not in response_data:
+                logger.error(f"Invalid API response structure: {response_data}")
                 raise ValueError(f"Invalid API response structure: {response_data}")
             
             body = response_data["body"]
             
             if "orderId" not in body:
+                logger.error(f"Missing orderId in response: {body}")
                 raise ValueError(f"Missing orderId in response: {body}")
             
             return body["orderId"]
             
         except requests.exceptions.Timeout:
+            logger.error("Request to start virtual try-on timed out")
             raise TimeoutError("Request to start virtual try-on timed out")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to start virtual try-on: {str(e)}")
             raise RuntimeError(f"Failed to start virtual try-on: {str(e)}")
         except (KeyError, ValueError) as e:
+            logger.error(f"Invalid response from API: {str(e)}")
             raise RuntimeError(f"Invalid response from API: {str(e)}")
     
     @staticmethod
     def check_status(order_id, max_attempts=60):
+        logger.debug(f"Checking status for order ID: {order_id}")
         """Check the status of virtual try-on order."""
         headers = {
             "Content-Type": "application/json",
@@ -448,20 +499,21 @@ class VirtualTryOnService:
                 response_data = res.json()
                 
                 if not response_data or "body" not in response_data:
-                    print(f"Warning: Invalid response structure on attempt {i+1}: {response_data}")
+                    logger.error(f"Invalid API response structure: {response_data}")
                     continue
                 
                 body = response_data["body"]
                 
                 if "status" not in body:
-                    print(f"Warning: Missing status field on attempt {i+1}: {body}")
+                    logger.error(f"Missing status in response body: {body}")
                     continue
                 
                 status = body["status"]
-                print(f"Status check {i+1}/{max_attempts}: {status}")
+                logger.debug(f"Attempt {i+1}/{max_attempts}: Order status is '{status}'")
                 
                 if status == "active":
                     if "output" not in body:
+                        logger.error("Status is active but output is missing")
                         raise ValueError("Status is active but output is missing")
                     
                     output = body["output"]
@@ -471,37 +523,43 @@ class VirtualTryOnService:
                         # If output is a dict, look for URL in common keys
                         result_url = output.get("url") or output.get("imageUrl") or output.get("resultUrl")
                         if not result_url:
+                            logger.error(f"Output dict does not contain a URL: {output}")
                             raise ValueError(f"Output is a dict but no URL found: {output}")
                         return result_url
                     elif isinstance(output, str):
+                        logger.info("Output is a string URL.")
                         # If output is a string, assume it's the URL
                         return output
                     else:
+                        logger.error(f"Unexpected output format: {type(output)}")   
                         raise ValueError(f"Unexpected output format: {type(output)}")
                 
                 elif status == "failed":
+                    logger.error("Virtual try-on process failed.")
                     error_msg = body.get("error", body.get("message", "Unknown error"))
                     raise RuntimeError(f"Virtual try-on failed: {error_msg}")
                 
                 elif status in ["pending", "processing", "queued"]:
+                    logger.info(f"Order is still processing (status: {status}), continuing to poll...")
                     # Status is still processing, continue polling
                     continue
                 else:
-                    print(f"Warning: Unknown status '{status}' on attempt {i+1}")
+                    logger.warning(f"Unknown status '{status}' on attempt {i+1}")
                     continue
                     
             except requests.exceptions.Timeout:
-                print(f"Timeout on status check attempt {i+1}/{max_attempts}")
+                logger.error(f"Status check timed out on attempt {i+1}/{max_attempts}")
                 if i == max_attempts - 1:
+                    logger.error(f"Status check timed out after {max_attempts} attempts")
                     raise TimeoutError(f"Status check timed out after {max_attempts} attempts")
                 continue
             except requests.exceptions.RequestException as e:
-                print(f"Request error on attempt {i+1}/{max_attempts}: {str(e)}")
+                logger.error(f"Request error on attempt {i+1}/{max_attempts}: {str(e)}")
                 if i == max_attempts - 1:
                     raise RuntimeError(f"Failed to check status after {max_attempts} attempts: {str(e)}")
                 continue
             except (KeyError, ValueError) as e:
-                print(f"Parse error on attempt {i+1}/{max_attempts}: {str(e)}")
+                logger.error(f"Parse error on attempt {i+1}/{max_attempts}: {str(e)}")
                 if i == max_attempts - 1:
                     raise RuntimeError(f"Invalid response format: {str(e)}")
                 continue
@@ -510,12 +568,15 @@ class VirtualTryOnService:
     
     @staticmethod
     def download_result_image(image_url, save_path):
+        logger.debug(f"Downloading result image from URL: {image_url}")
         """Download the result image from URL."""
         try:
+            logger.info(f"Downloading result image to: {save_path}")
             response = requests.get(image_url, stream=True, timeout=60)
             response.raise_for_status()
             
             with open(save_path, 'wb') as f:
+                logger.debug("Writing image data to file...")
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
             
@@ -533,6 +594,7 @@ class BodyTypeClassifier:
     
     @staticmethod
     def classify_body_type(gender, chest, waist, hip, shoulder_width=None):
+        logger.debug(f"Classifying body type for gender: {gender}, chest: {chest}, waist: {waist}, hip: {hip}, shoulder_width: {shoulder_width}")
         """
         Classify body type based on measurements.
         
@@ -543,12 +605,15 @@ class BodyTypeClassifier:
         gender = gender.lower()
         
         if gender == 'male':
+            logger.debug("Using male body type classification.")
             return BodyTypeClassifier._classify_male(chest, waist, hip, shoulder_width)
         else:
+            logger.debug("Using female body type classification.")
             return BodyTypeClassifier._classify_female(chest, waist, hip)
     
     @staticmethod
     def _classify_male(chest, waist, hip, shoulder_width):
+        logger.debug("Classifying male body type.")
         """Classify male body type."""
         chest_waist_ratio = chest / waist if waist > 0 else 1
         shoulder_waist_ratio = shoulder_width / waist if waist > 0 and shoulder_width else chest_waist_ratio
@@ -564,6 +629,7 @@ class BodyTypeClassifier:
     
     @staticmethod
     def _classify_female(chest, waist, hip):
+        logger.debug("Classifying female body type.")
         """Classify female body type."""
         bust_hip_diff = abs(chest - hip)
         
@@ -579,10 +645,12 @@ class BodyTypeClassifier:
             return "rectangle"
 
 class BMICalculator:
+    logger.debug("Calculating BMI and categorizing.")
     """Calculate BMI and categorize."""
     
     @staticmethod
     def calculate_bmi(weight_kg, height_cm):
+        logger.debug("Calculating BMI.")
         """Calculate BMI: weight(kg) / (height(m))^2"""
         height_m = height_cm / 100
         bmi = weight_kg / (height_m ** 2)
@@ -590,6 +658,7 @@ class BMICalculator:
     
     @staticmethod
     def categorize_bmi(bmi):
+        logger.debug("Categorizing BMI.")
         """Categorize BMI into standard ranges."""
         if bmi < 18.5:
             return "underweight"
@@ -601,6 +670,7 @@ class BMICalculator:
             return "obese"
 
 class MeasurementCorrector:
+    logger.debug("Applying measurement corrections based on BMI and body type.")
     """Apply correction factors based on BMI and body type."""
     
     MALE_CORRECTIONS = {
@@ -665,6 +735,7 @@ class MeasurementCorrector:
     
     @staticmethod
     def apply_corrections(measurements, gender, body_type, bmi_category):
+        logger.debug(f"Applying corrections for gender: {gender}, body_type: {body_type}, bmi_category: {bmi_category}")
         """Apply BMI and body type corrections to measurements."""
         corrections = (MeasurementCorrector.MALE_CORRECTIONS if gender.lower() == 'male' 
                       else MeasurementCorrector.FEMALE_CORRECTIONS)
@@ -689,9 +760,12 @@ class MeasurementCorrector:
     
 # --- ML Size Prediction Function ---
 def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
+    logger.debug("Predicting clothing size using ML model.")
     if not ML_MODEL_AVAILABLE:
+        logger.warning("ML model not available for size prediction.")
         return None
     try:
+        logger.debug("Preparing input features for ML model.")
         gender_encoded = GENDER_ENCODER.transform([gender])[0]
 
         # IMPORTANT: feature order must match training
@@ -713,6 +787,7 @@ def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
 # --- Measurement Calculation Class ---
 
 class CompleteBodyMeasurementsCalculator:
+    logger.debug("Calculating complete body measurements with corrections.")
     """Enhanced calculator with BMI and body type corrections."""
     
     def __init__(self, gender, weight, height):
@@ -721,6 +796,7 @@ class CompleteBodyMeasurementsCalculator:
         self.height = height  # in cm
         
         if self.gender not in ['male', 'female']:
+            logger.error("Invalid gender provided for measurements calculator.")
             raise ValueError("Gender must be 'male' or 'female'")
         
         # Calculate BMI
@@ -728,18 +804,23 @@ class CompleteBodyMeasurementsCalculator:
         self.bmi_category = BMICalculator.categorize_bmi(self.bmi)
     
     def load_obj_file(self, filepath, is_side_view=False):
+        logger.debug(f"Loading OBJ file: {filepath} (side view: {is_side_view})")
         """Load OBJ file, detect units, and apply auto-rotation for side views."""
         try:
+            logger.debug(f"Loading mesh from file: {filepath}")
             mesh = trimesh.load(filepath)
             mesh, scale_factor = self.detect_and_convert_units(mesh, filepath)
             if is_side_view:
+                logger.debug("Applying auto-rotation for side view mesh.")
                 mesh = self.auto_rotate_side_view(mesh)
             return mesh
         except Exception as e:
+            logger.error(f"Error loading OBJ file: {str(e)}")
             print(f"Error loading {filepath}: {e}")
             return None
     
     def detect_and_convert_units(self, mesh, filepath):
+        logger.debug(f"Detecting units for mesh from file: {filepath}")
         """Scales the mesh if dimensions suggest it's in meters."""
         bbox = mesh.bounds
         max_dim = max(bbox[1] - bbox[0])
@@ -773,6 +854,7 @@ class CompleteBodyMeasurementsCalculator:
         return mesh
     
     def detect_landmarks(self, mesh, percentage_from_top):
+        logger.debug(f"Detecting landmarks at {percentage_from_top*100}% from top.")
         """Extract vertices within a vertical slice."""
         vertices = mesh.vertices
         bbox = mesh.bounds
@@ -787,6 +869,7 @@ class CompleteBodyMeasurementsCalculator:
         ]
     
     def calculate_width(self, mesh, percentage_from_top):
+        logger.debug(f"Calculating width at {percentage_from_top*100}% from top.")
         """Calculates width at a specified vertical percentage."""
         v = self.detect_landmarks(mesh, percentage_from_top)
         if len(v) == 0:
@@ -794,6 +877,7 @@ class CompleteBodyMeasurementsCalculator:
         return abs(np.max(v[:, 0]) - np.min(v[:, 0]))
     
     def calculate_depth(self, mesh, percentage_from_top):
+        logger.debug(f"Calculating depth at {percentage_from_top*100}% from top.")
         """Calculates depth at a specified vertical percentage."""
         v = self.detect_landmarks(mesh, percentage_from_top)
         if len(v) == 0:
@@ -801,12 +885,14 @@ class CompleteBodyMeasurementsCalculator:
         return abs(np.max(v[:, 2]) - np.min(v[:, 2]))
     
     def ramanujan_ellipse_circumference(self, a, b):
+        logger.debug(f"Calculating ellipse circumference with a={a}, b={b}.")
         """Approximation of ellipse circumference using Ramanujan's formula."""
         if a <= 0 or b <= 0:
             return 0.0
         return math.pi * (3*(a+b) - math.sqrt((3*a+b)*(a+3*b)))
     
     def get_semi_axes(self, width, depth, mtype):
+        logger.debug(f"Getting semi-axes for measurement type: {mtype}.")
         """Adjusts width/depth to semi-axes for the ellipse formula."""
         if mtype == 'neck':
             a = width / 3
@@ -826,6 +912,7 @@ class CompleteBodyMeasurementsCalculator:
         return a, b
     
     def adjust_chest_by_weight(self, chest_circumference):
+        logger.debug("Adjusting chest circumference based on weight (legacy method).")
         """Adjust chest circumference based on weight (males only) - legacy method."""
         if self.gender != 'male':
             return chest_circumference
@@ -840,6 +927,7 @@ class CompleteBodyMeasurementsCalculator:
             return chest_circumference
     
     def estimate_shoulder_width(self, mesh, real_height):
+        logger.debug("Estimating shoulder width.")
         """Estimates shoulder width."""
         vertices = mesh.vertices
         y = vertices[:, 1]
@@ -862,12 +950,14 @@ class CompleteBodyMeasurementsCalculator:
         return abs(x_max - x_min) * scale
     
     def compute_arm_sections(self, total_arm_length):
+        logger.debug("Computing arm sections.")
         """Estimates arm sections based on proportional breakdown."""
         hand_to_elbow = total_arm_length / 2
         shoulder_to_elbow = total_arm_length * 0.58
         return hand_to_elbow, shoulder_to_elbow
     
     def calculate_all_measurements(self, front_obj, side_obj):
+        logger.debug("Calculating all measurements with corrections.")
         """Main method to calculate all measurements with BMI and body type corrections."""
         front_mesh = self.load_obj_file(front_obj, is_side_view=False)
         side_mesh = self.load_obj_file(side_obj, is_side_view=True)
@@ -887,6 +977,7 @@ class CompleteBodyMeasurementsCalculator:
         
         # Calculate raw circumferences
         for name, pct in measurement_points:
+            logger.debug(f"Calculating {name} measurement.")
             w = self.calculate_width(front_mesh, pct)
             d = self.calculate_depth(side_mesh, pct)
             
@@ -968,6 +1059,7 @@ class CompleteBodyMeasurementsCalculator:
 # --- HMR2 Processing Function ---
 
 def process_image_to_mesh(img_path, output_path, model, detector, renderer, model_cfg):
+    logger.debug(f"Processing image to 3D mesh: {img_path} -> {output_path}")
     """Process image to 3D mesh using HMR2."""
     img_cv2 = cv2.imread(str(img_path))
     
@@ -983,6 +1075,7 @@ def process_image_to_mesh(img_path, output_path, model, detector, renderer, mode
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
     
     for batch in dataloader:
+        logger.debug("Running HMR2 model inference.")
         batch = recursive_to(batch, device)
         with torch.no_grad():
             out = model(batch)
@@ -1013,7 +1106,7 @@ detector = None
 renderer = None
 
 if HMR2_AVAILABLE:
-    print("Loading HMR2 model...")
+    logger.debug("Loading HMR2 model and dependencies.")
     download_models(CACHE_DIR_4DHUMANS)
     model, model_cfg = load_hmr2(DEFAULT_CHECKPOINT)
     model = model.to(device)
@@ -1027,9 +1120,9 @@ if HMR2_AVAILABLE:
     detector = DefaultPredictor_Lazy(detectron2_cfg)
 
     renderer = Renderer(model_cfg, faces=model.smpl.faces)
-    print("Model loaded successfully!")
+    logger.info("Model loaded successfully!")
 else:
-    print("Running in UI-only mode. HMR2 model not loaded.")
+    logger.warning("HMR2 model or dependencies not available. Running in UI-only mode.")
 
 # --- Flask Routes ---
 
@@ -1056,17 +1149,21 @@ def virtual_tryon_process():
     clothing_path = None
     
     try:
+        logger.debug("Starting virtual try-on process.")
         # Check for uploaded files
         if 'person_image' not in request.files or 'clothing_image' not in request.files:
+            logger.debug("Missing person or clothing image in request.")
             return jsonify({'success': False, 'error': 'Both person and clothing images are required'})
         
         person_file = request.files['person_image']
         clothing_file = request.files['clothing_image']
         
         if person_file.filename == '' or clothing_file.filename == '':
+            logger.debug("No files selected for upload.")
             return jsonify({'success': False, 'error': 'Please select both images'})
         
         if not (allowed_file(person_file.filename) and allowed_file(clothing_file.filename)):
+            logger.debug("Invalid file type uploaded.")
             return jsonify({'success': False, 'error': 'Invalid file type. Use PNG, JPG, or JPEG'})
         
         # Get clothing type (0=upper, 1=lower, 2=full)
@@ -1087,40 +1184,40 @@ def virtual_tryon_process():
         tryon_service = VirtualTryOnService()
         
         # Step 1: Get upload URLs
-        print("Getting upload URLs...")
+        logger.debug("Obtaining upload URLs from LightX API.")
         person_upload_url, person_image_url = tryon_service.get_upload_url(person_path)
-        print(f"Person image URL obtained: {person_image_url[:50]}...")
+        logger.debug(f"Person image URL obtained: {person_image_url[:50]}...")
         
         clothing_upload_url, clothing_image_url = tryon_service.get_upload_url(clothing_path)
-        print(f"Clothing image URL obtained: {clothing_image_url[:50]}...")
+        logger.debug(f"Clothing image URL obtained: {clothing_image_url[:50]}...")
         
         # Step 2: Upload images
-        print("Uploading images to LightX API...")
+        logger.debug("Uploading images to LightX API...")
         tryon_service.upload_image(person_upload_url, person_path)
-        print("Person image uploaded successfully")
+        logger.debug("Person image uploaded successfully")
         
         tryon_service.upload_image(clothing_upload_url, clothing_path)
-        print("Clothing image uploaded successfully")
+        logger.debug("Clothing image uploaded successfully")
         
         # Step 3: Start virtual try-on
-        print("Starting virtual try-on...")
+        logger.debug("Starting virtual try-on...")
         order_id = tryon_service.start_virtual_tryon(
             person_image_url, 
             clothing_image_url, 
             clothing_type
         )
-        print(f"Virtual try-on started with order ID: {order_id}")
+        logger.info(f"Virtual try-on started with order ID: {order_id}")
         
         # Step 4: Check status and get result
-        print(f"Checking status for order: {order_id}")
+        logger.info(f"Checking status for order: {order_id}")
         result_url = tryon_service.check_status(order_id)
-        print(f"Result URL obtained: {result_url[:50]}...")
+        logger.info(f"Result URL obtained: {result_url[:50]}...")
         
         # Step 5: Download result image
         result_filename = f"tryon_result_{timestamp}.jpg"
         result_path = os.path.join(app.config['TRYON_FOLDER'], result_filename)
         tryon_service.download_result_image(result_url, result_path)
-        print(f"Result image saved to: {result_path}")
+        logger.info(f"Result image saved to: {result_path}")
         
         # Return success with result
         return jsonify({
@@ -1131,16 +1228,16 @@ def virtual_tryon_process():
         })
         
     except requests.exceptions.RequestException as e:
-        print(f"API request failed: {str(e)}")
+        logger.error(f"API request failed: {str(e)}")
         return jsonify({'success': False, 'error': f'API request failed: {str(e)}'})
     except TimeoutError as e:
-        print(f"Timeout error: {str(e)}")
+        logger.error(f"Timeout error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
     except RuntimeError as e:
-        print(f"Runtime error: {str(e)}")
+        logger.error(f"Runtime error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
-        print(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': f'An unexpected error occurred: {str(e)}'})
@@ -1150,12 +1247,13 @@ def virtual_tryon_process():
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
-                    print(f"Cleaned up: {file_path}")
+                    logger.debug(f"Cleaned up file: {file_path}")
                 except Exception as e:
-                    print(f"Failed to cleanup {file_path}: {str(e)}")
+                    logger.warning(f"Failed to delete file {file_path}: {str(e)}")  
 
 @app.route('/tryon-result/<filename>')
 def serve_tryon_result(filename):
+    logger.debug(f"Serving try-on result image: {filename}")
     """Serve the virtual try-on result image."""
     return send_file(
         os.path.join(app.config['TRYON_FOLDER'], filename),
@@ -1164,6 +1262,7 @@ def serve_tryon_result(filename):
 
 @app.route('/download-tryon/<filename>')
 def download_tryon(filename):
+    logger.debug(f"Downloading try-on result image: {filename}")
     """Download the virtual try-on result image."""
     return send_file(
         os.path.join(app.config['TRYON_FOLDER'], filename),
@@ -1174,12 +1273,14 @@ def download_tryon(filename):
 
 @app.route('/process', methods=['POST'])
 def process():
+    logger.debug("Starting body measurement processing.")
     front_path = None
     side_path = None
     
     try:
         # Check if HMR2 is available
         if not HMR2_AVAILABLE:
+            logger.debug("HMR2 model not installed.")
             return jsonify({'success': False, 'error': 'HMR2 model is not installed. Please install the HMR2 dependencies to enable body measurement functionality.'})
         
         # Get form data
@@ -1223,7 +1324,7 @@ def process():
         
         # === POSE VALIDATION ===
         if MEDIAPIPE_AVAILABLE:
-            print("Validating pose in uploaded images...")
+            logger.debug("Performing pose validation using MediaPipe.")
             try:
                 validator = PoseValidator()
                 is_valid, validation_results = validator.validate_images(front_path, side_path)
@@ -1271,30 +1372,30 @@ def process():
                                     "• Ensure full body is visible in frame\n" \
                                     "• Use good lighting and clear background."
                     
-                    print(f"Pose validation failed: {error_message}")
+                    logger.debug("Pose validation failed.")
                     return jsonify({
                         'success': False,
                         'error': error_message,
                         'validation_details': validation_results
                     })
                 
-                print("✓ Pose validation passed for both images")
-                print(f"  - Front: {validation_results['front_message']}")
-                print(f"  - Side: {validation_results['side_message']}")
+                logger.debug("✓ Pose validation passed for both images")
+                logger.debug(f"  - Front: {validation_results['front_message']}")
+                logger.debug(f"  - Side: {validation_results['side_message']}")
                 
             except Exception as e:
-                print(f"Warning: Pose validation failed with error: {str(e)}")
-                print("Proceeding without pose validation...")
+                logger.warning(f"Pose validation failed with error: {str(e)}")
+                logger.debug("Proceeding without pose validation...")
                 # Continue processing even if validation fails
         else:
-            print("Warning: MediaPipe not available, skipping pose validation")
+            logger.debug("Warning: MediaPipe not available, skipping pose validation")
         
         # === PROCEED WITH HMR2 PROCESSING ===
         # Process images to 3D meshes
         front_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'front_mesh_{timestamp}.obj')
         side_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'side_mesh_{timestamp}.obj')
         
-        print("Processing front image with HMR2...")
+        logger.debug("Processing front image with HMR2...")
         front_result = process_image_to_mesh(front_path, front_obj, model, detector, renderer, model_cfg)
         
         if front_result is None:
@@ -1307,7 +1408,7 @@ def process():
                         '• You are the only person in the image'
             })
         
-        print("Processing side image with HMR2...")
+        logger.debug("Processing side image with HMR2...")
         side_result = process_image_to_mesh(side_path, side_obj, model, detector, renderer, model_cfg)
         
         if side_result is None:
@@ -1321,7 +1422,7 @@ def process():
             })
         
         # Calculate measurements with BMI and body type corrections
-        print("Calculating body measurements...")
+        logger.debug("Calculating body measurements...")
         calculator = CompleteBodyMeasurementsCalculator(gender, weight, height)
         measurements = calculator.calculate_all_measurements(front_obj, side_obj)
         
@@ -1335,7 +1436,7 @@ def process():
                         'Please try again with clearer images where you are standing straight.'
             })
         
-        print("✓ Measurements calculated successfully!")
+        logger.debug("✓ Measurements calculated successfully!")
         
         # Cleanup uploaded files and temporary mesh files
         for f in [front_path, side_path, front_obj, side_obj]:
@@ -1343,7 +1444,7 @@ def process():
                 try:
                     os.remove(f)
                 except Exception as e:
-                    print(f"Warning: Could not cleanup {f}: {str(e)}")
+                    logger.warning(f"Warning: Could not cleanup {f}: {str(e)}")
         
         return jsonify({'success': True, 'measurements': measurements})
         
@@ -1351,7 +1452,7 @@ def process():
         # User input validation errors
         return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
-        print(f"Unexpected error in /process: {str(e)}")
+        logger.error(f"Unexpected error in /process: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({
@@ -1364,9 +1465,9 @@ def process():
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
-                    print(f"Cleaned up: {file_path}")
+                    logger.debug(f"Cleaned up: {file_path}")
                 except Exception as e:
-                    print(f"Failed to cleanup {file_path}: {str(e)}")
+                    logger.warning(f"Failed to cleanup {file_path}: {str(e)}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
