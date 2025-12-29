@@ -75,6 +75,37 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     /* ===============================
+       Enhanced Error Display Function
+    =============================== */
+    function displayError(message) {
+        const errorDiv = document.getElementById('error');
+        if (!errorDiv) return;
+
+        // Format the error message properly
+        let formattedMessage = message
+            // Convert double newlines to paragraph breaks
+            .replace(/\n\n/g, '<br><br>')
+            // Convert single newlines to line breaks
+            .replace(/\n/g, '<br>')
+            // Style emoji icons
+            .replace(/❌/g, '<span style="font-size: 1.2em;">❌</span>')
+            .replace(/💡/g, '<span style="font-size: 1.2em;">💡</span>')
+            .replace(/⚠️/g, '<span style="font-size: 1.2em;">⚠️</span>')
+            .replace(/✓/g, '<span style="color: #10b981;">✓</span>')
+            // Make bullet points more visible
+            .replace(/• /g, '<span style="color: #dc2626; font-weight: bold;">• </span>');
+
+        // Use innerHTML to render HTML tags
+        errorDiv.innerHTML = formattedMessage;
+        errorDiv.classList.add('active');
+
+        // Scroll to error message smoothly
+        setTimeout(() => {
+            errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    }
+
+    /* ===============================
        Form submission
     =============================== */
     const form = document.getElementById('measurementForm');
@@ -90,9 +121,11 @@ document.addEventListener('DOMContentLoaded', function () {
         const results = document.getElementById('results');
         const error = document.getElementById('error');
 
+        // Hide previous results and errors
         if (results) results.classList.remove('active');
         if (error) error.classList.remove('active');
 
+        // Disable button and show loading
         if (btn) btn.disabled = true;
         if (loading) loading.classList.add('active');
 
@@ -116,6 +149,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const data = await res.json();
 
             if (!data.success) {
+                // Use the enhanced error display function
                 throw new Error(data.error || 'Processing failed');
             }
 
@@ -140,7 +174,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 // Body Type
                 safeUpdate('bodyType', formatBodyType(meta.body_type));
 
-                // ✅ RECOMMENDED SIZE (FIXED)
+                // Recommended Size
                 safeUpdate('recommendedSize', meta.recommended_size || '-');
             }
 
@@ -171,19 +205,22 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('armTotalCm', m.arm?.total_length?.cm);
             safeUpdate('armTotalIn', m.arm?.total_length?.inches);
 
+            // Show results with smooth scroll
             if (results) {
                 results.classList.add('active');
-                results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                setTimeout(() => {
+                    results.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 100);
             }
 
         } catch (err) {
-            console.error(err);
-            if (error) {
-                error.textContent = err.message || 'Network error. Please try again.';
-                error.classList.add('active');
-            }
+            console.error('Error:', err);
+            
+            // Use enhanced error display function
+            displayError(err.message || 'Network error. Please try again.');
         }
 
+        // Re-enable form
         if (loading) loading.classList.remove('active');
         if (btn) btn.disabled = false;
     });

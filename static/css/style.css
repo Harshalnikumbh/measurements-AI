@@ -357,17 +357,45 @@ body {
 
 .error {
     display: none;
-    background: #fef2f2;
-    color: #dc2626;
-    padding: 16px;
-    border-radius: 10px;
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    color: #991b1b;
+    padding: 25px 30px;
+    border-radius: 12px;
     margin-top: 20px;
-    text-align: center;
-    border: 1px solid #fecaca;
+    text-align: left;  /* Changed from center */
+    border: 2px solid #fca5a5;
+    white-space: pre-line;  /* Important: makes \n work */
+    line-height: 1.8;  /* Better spacing */
+    max-width: 750px;
+    margin-left: auto;
+    margin-right: auto;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15);
+    font-size: 0.95em;
 }
 
 .error.active {
     display: block;
+    animation: slideDown 0.3s ease-out;
+}
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}  
+.error strong {
+    color: #7f1d1d;
+    font-weight: 700;
+}
+
+.error br {
+    display: block;
+    content: "";
+    margin: 0.5em 0;
 }
 
 .results {
