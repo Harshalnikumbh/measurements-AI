@@ -1,16 +1,24 @@
-from flask import Flask, request, jsonify, render_template, send_file
 import os
-import torch
 import cv2
+import math
+import time
+import torch
 import joblib
+import trimesh
+import requests
 import numpy as np
 from pathlib import Path
-from werkzeug.utils import secure_filename
-import trimesh
-import math
-import requests
-import time
 from datetime import datetime
+from werkzeug.utils import secure_filename
+from flask import Flask, request, jsonify, render_template, send_file
+
+# MediaPipe for pose detection
+try:
+    import mediapipe as mp
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    print("MediaPipe not available. Pose validation will be skipped.")
+    MEDIAPIPE_AVAILABLE = False
 
 if 'PYOPENGL_PLATFORM' in os.environ:
     del os.environ['PYOPENGL_PLATFORM']
@@ -68,6 +76,179 @@ CONTENT_TYPE = "image/jpeg"
 def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# --- Pose Validation Class ---
+
+class PoseValidator:
+    """Validate that the person is standing straight using MediaPipe Pose."""
+    
+    WAIST_ANGLE_THRESHOLD = 160  # Minimum angle to be considered straight
+    
+    def __init__(self):
+        if not MEDIAPIPE_AVAILABLE:
+            raise RuntimeError("MediaPipe is not available for pose validation")
+        self.mp_pose = mp.solutions.pose
+    
+    @staticmethod
+    def calculate_angle(a, b, c):
+        """Calculate angle between three points (a-b-c) where b is the vertex."""
+        ba = (a[0] - b[0], a[1] - b[1])
+        bc = (c[0] - b[0], c[1] - b[1])
+        
+        dot = ba[0] * bc[0] + ba[1] * bc[1]
+        mag_ba = math.hypot(*ba)
+        mag_bc = math.hypot(*bc)
+        
+        if mag_ba * mag_bc == 0:
+            return 180.0
+        
+        cos_angle = max(min(dot / (mag_ba * mag_bc), 1.0), -1.0)
+        return math.degrees(math.acos(cos_angle))
+    
+    def load_pose_landmarks(self, image_path):
+        """Load and detect pose landmarks from an image."""
+        image = cv2.imread(image_path)
+        if image is None:
+            raise ValueError(f"Could not load image: {image_path}")
+        
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        with self.mp_pose.Pose(static_image_mode=True, model_complexity=1) as pose:
+            result = pose.process(image_rgb)
+        
+        if not result.pose_landmarks:
+            raise ValueError("No person detected in the image")
+        
+        return result.pose_landmarks.landmark
+    
+    def check_front_view(self, image_path):
+        """
+        Check if person is standing straight in front view.
+        Returns: (is_accepted, angle, message)
+        """
+        try:
+            landmarks = self.load_pose_landmarks(image_path)
+            
+            def get_point(idx):
+                return (landmarks[idx].x, landmarks[idx].y)
+            
+            # Get key landmarks
+            LS = self.mp_pose.PoseLandmark.LEFT_SHOULDER.value
+            RS = self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value
+            LH = self.mp_pose.PoseLandmark.LEFT_HIP.value
+            RH = self.mp_pose.PoseLandmark.RIGHT_HIP.value
+            LK = self.mp_pose.PoseLandmark.LEFT_KNEE.value
+            RK = self.mp_pose.PoseLandmark.RIGHT_KNEE.value
+            
+            # Calculate center points
+            shoulder = (
+                (get_point(LS)[0] + get_point(RS)[0]) / 2,
+                (get_point(LS)[1] + get_point(RS)[1]) / 2
+            )
+            hip = (
+                (get_point(LH)[0] + get_point(RH)[0]) / 2,
+                (get_point(LH)[1] + get_point(RH)[1]) / 2
+            )
+            knee = (
+                (get_point(LK)[0] + get_point(RK)[0]) / 2,
+                (get_point(LK)[1] + get_point(RK)[1]) / 2
+            )
+            
+            # Calculate waist angle
+            angle = self.calculate_angle(shoulder, hip, knee)
+            is_accepted = angle >= self.WAIST_ANGLE_THRESHOLD
+            
+            message = f"Front view: waist angle {angle:.1f}° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
+            
+            return is_accepted, angle, message
+            
+        except ValueError as e:
+            raise ValueError(f"Front view error: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error in front view validation: {str(e)}")
+    
+    def check_side_view(self, image_path):
+        """
+        Check if person is standing straight in side view.
+        Returns: (is_accepted, angle, message)
+        """
+        try:
+            landmarks = self.load_pose_landmarks(image_path)
+            
+            def get_point(idx):
+                return (landmarks[idx].x, landmarks[idx].y)
+            
+            def get_visibility(idx):
+                return landmarks[idx].visibility
+            
+            # Get key landmarks
+            LS = self.mp_pose.PoseLandmark.LEFT_SHOULDER.value
+            RS = self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value
+            LH = self.mp_pose.PoseLandmark.LEFT_HIP.value
+            RH = self.mp_pose.PoseLandmark.RIGHT_HIP.value
+            LA = self.mp_pose.PoseLandmark.LEFT_ANKLE.value
+            RA = self.mp_pose.PoseLandmark.RIGHT_ANKLE.value
+            
+            # Choose the more visible side
+            use_left = get_visibility(LS) > get_visibility(RS)
+            
+            shoulder = get_point(LS if use_left else RS)
+            hip = get_point(LH if use_left else RH)
+            ankle = get_point(LA if use_left else RA)
+            
+            # Calculate waist angle
+            angle = self.calculate_angle(shoulder, hip, ankle)
+            is_accepted = angle >= self.WAIST_ANGLE_THRESHOLD
+            
+            side_name = "left" if use_left else "right"
+            message = f"Side view ({side_name}): waist angle {angle:.1f}° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
+            
+            return is_accepted, angle, message
+            
+        except ValueError as e:
+            raise ValueError(f"Side view error: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error in side view validation: {str(e)}")
+    
+    def validate_images(self, front_image_path, side_image_path):
+        """
+        Validate both front and side images.
+        Returns: (overall_success, detailed_results)
+        """
+        results = {
+            'front_accepted': False,
+            'side_accepted': False,
+            'front_angle': None,
+            'side_angle': None,
+            'front_message': '',
+            'side_message': '',
+            'errors': []
+        }
+        
+        # Check front view
+        try:
+            front_ok, front_angle, front_msg = self.check_front_view(front_image_path)
+            results['front_accepted'] = front_ok
+            results['front_angle'] = front_angle
+            results['front_message'] = front_msg
+        except Exception as e:
+            results['errors'].append(f"Front image: {str(e)}")
+            results['front_message'] = f"Front image error: {str(e)}"
+        
+        # Check side view
+        try:
+            side_ok, side_angle, side_msg = self.check_side_view(side_image_path)
+            results['side_accepted'] = side_ok
+            results['side_angle'] = side_angle
+            results['side_message'] = side_msg
+        except Exception as e:
+            results['errors'].append(f"Side image: {str(e)}")
+            results['side_message'] = f"Side image error: {str(e)}"
+        
+        # Overall success requires both images to be accepted
+        overall_success = results['front_accepted'] and results['side_accepted'] and len(results['errors']) == 0
+        
+        return overall_success, results
 
 # --- Clothing Size Recommendation Class ---
 
@@ -993,6 +1174,9 @@ def download_tryon(filename):
 
 @app.route('/process', methods=['POST'])
 def process():
+    front_path = None
+    side_path = None
+    
     try:
         # Check if HMR2 is available
         if not HMR2_AVAILABLE:
@@ -1027,8 +1211,9 @@ def process():
             return jsonify({'success': False, 'error': 'Invalid file type. Use PNG, JPG, or JPEG'})
         
         # Save uploaded files
-        front_filename = secure_filename(f"front_{front_file.filename}")
-        side_filename = secure_filename(f"side_{side_file.filename}")
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        front_filename = secure_filename(f"front_{timestamp}_{front_file.filename}")
+        side_filename = secure_filename(f"side_{timestamp}_{side_file.filename}")
         
         front_path = os.path.join(app.config['UPLOAD_FOLDER'], front_filename)
         side_path = os.path.join(app.config['UPLOAD_FOLDER'], side_filename)
@@ -1036,32 +1221,152 @@ def process():
         front_file.save(front_path)
         side_file.save(side_path)
         
-        # Process images to 3D meshes
-        front_obj = os.path.join(app.config['OUTPUT_FOLDER'], 'front_mesh.obj')
-        side_obj = os.path.join(app.config['OUTPUT_FOLDER'], 'side_mesh.obj')
+        # === POSE VALIDATION ===
+        if MEDIAPIPE_AVAILABLE:
+            print("Validating pose in uploaded images...")
+            try:
+                validator = PoseValidator()
+                is_valid, validation_results = validator.validate_images(front_path, side_path)
+                
+                if not is_valid:
+                    # Build detailed error message
+                    error_messages = []
+                    
+                    if not validation_results['front_accepted']:
+                        if validation_results['front_angle'] is not None:
+                            error_messages.append(
+                                f"❌ Front image: Person appears to be bending. "
+                                # f"Detected waist angle: {validation_results['front_angle']:.1f}° "
+                                # f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
+                                f"Please upload a front image where you're standing straight with arms by your sides."
+                            )
+                        else:
+                            error_messages.append(
+                                f"❌ Front image: {validation_results['front_message']}"
+                            )
+                    
+                    if not validation_results['side_accepted']:
+                        if validation_results['side_angle'] is not None:
+                            error_messages.append(
+                                f"❌ Side image: Person appears to be bending. "
+                                f"Detected waist angle: {validation_results['side_angle']:.1f}° "
+                                f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
+                                f"Please upload a side image where you're standing straight."
+                            )
+                        else:
+                            error_messages.append(
+                                f"❌ Side image: {validation_results['side_message']}"
+                            )
+                    
+                    # Add general validation errors
+                    if validation_results['errors']:
+                        for err in validation_results['errors']:
+                            if err not in str(error_messages):  # Avoid duplicates
+                                error_messages.append(f"⚠️ {err}")
+                    
+                    error_message = "\n\n".join(error_messages)
+                    error_message += "\n\n💡 Tips for better results:\n" \
+                                    "• Stand upright with your back straight\n" \
+                                    "• Keep arms relaxed at your sides\n" \
+                                    "• Ensure full body is visible in frame\n" \
+                                    "• Use good lighting and clear background."
+                    
+                    print(f"Pose validation failed: {error_message}")
+                    return jsonify({
+                        'success': False,
+                        'error': error_message,
+                        'validation_details': validation_results
+                    })
+                
+                print("✓ Pose validation passed for both images")
+                print(f"  - Front: {validation_results['front_message']}")
+                print(f"  - Side: {validation_results['side_message']}")
+                
+            except Exception as e:
+                print(f"Warning: Pose validation failed with error: {str(e)}")
+                print("Proceeding without pose validation...")
+                # Continue processing even if validation fails
+        else:
+            print("Warning: MediaPipe not available, skipping pose validation")
         
+        # === PROCEED WITH HMR2 PROCESSING ===
+        # Process images to 3D meshes
+        front_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'front_mesh_{timestamp}.obj')
+        side_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'side_mesh_{timestamp}.obj')
+        
+        print("Processing front image with HMR2...")
         front_result = process_image_to_mesh(front_path, front_obj, model, detector, renderer, model_cfg)
+        
+        if front_result is None:
+            return jsonify({
+                'success': False,
+                'error': 'Could not detect a person in the front image. Please ensure:\n'
+                        '• The full body is visible in the frame\n'
+                        '• You are standing against a clear background\n'
+                        '• The image has good lighting\n'
+                        '• You are the only person in the image'
+            })
+        
+        print("Processing side image with HMR2...")
         side_result = process_image_to_mesh(side_path, side_obj, model, detector, renderer, model_cfg)
         
-        if front_result is None or side_result is None:
-            return jsonify({'success': False, 'error': 'Could not detect a person in one or both images. Please use clear, full-body photos.'})
+        if side_result is None:
+            return jsonify({
+                'success': False,
+                'error': 'Could not detect a person in the side image. Please ensure:\n'
+                        '• The full body is visible in the frame\n'
+                        '• You are standing against a clear background\n'
+                        '• The image has good lighting\n'
+                        '• You are the only person in the image'
+            })
         
         # Calculate measurements with BMI and body type corrections
+        print("Calculating body measurements...")
         calculator = CompleteBodyMeasurementsCalculator(gender, weight, height)
         measurements = calculator.calculate_all_measurements(front_obj, side_obj)
         
         if measurements is None:
-            return jsonify({'success': False, 'error': 'Error calculating measurements'})
+            return jsonify({
+                'success': False,
+                'error': 'Error calculating measurements from the 3D models. This may happen if:\n'
+                        '• The body pose is too complex\n'
+                        '• Parts of the body are obscured\n'
+                        '• The images are of low quality\n\n'
+                        'Please try again with clearer images where you are standing straight.'
+            })
         
-        # Cleanup
-        for f in [front_path, side_path]:
-            if os.path.exists(f):
-                os.remove(f)
+        print("✓ Measurements calculated successfully!")
+        
+        # Cleanup uploaded files and temporary mesh files
+        for f in [front_path, side_path, front_obj, side_obj]:
+            if f and os.path.exists(f):
+                try:
+                    os.remove(f)
+                except Exception as e:
+                    print(f"Warning: Could not cleanup {f}: {str(e)}")
         
         return jsonify({'success': True, 'measurements': measurements})
         
-    except Exception as e:
+    except ValueError as e:
+        # User input validation errors
         return jsonify({'success': False, 'error': str(e)})
+    except Exception as e:
+        print(f"Unexpected error in /process: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': f'An unexpected error occurred while processing your images. Please try again with different images.'
+        })
+    finally:
+        # Ensure cleanup of uploaded files
+        for file_path in [front_path, side_path]:
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    print(f"Cleaned up: {file_path}")
+                except Exception as e:
+                    print(f"Failed to cleanup {file_path}: {str(e)}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
