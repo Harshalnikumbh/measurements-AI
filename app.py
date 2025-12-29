@@ -462,6 +462,7 @@ class VirtualTryOnService:
             return body["orderId"]
             
         except requests.exceptions.Timeout:
+
             logger.error("Request to start virtual try-on timed out")
             raise TimeoutError("Request to start virtual try-on timed out")
         except requests.exceptions.RequestException as e:
@@ -561,6 +562,7 @@ class VirtualTryOnService:
             except (KeyError, ValueError) as e:
                 logger.error(f"Parse error on attempt {i+1}/{max_attempts}: {str(e)}")
                 if i == max_attempts - 1:
+                    logger.error(f"Invalid response format after {max_attempts} attempts: {str(e)}")
                     raise RuntimeError(f"Invalid response format: {str(e)}")
                 continue
         
@@ -583,8 +585,10 @@ class VirtualTryOnService:
             return save_path
             
         except requests.exceptions.Timeout:
+            logger.error("Download of result image timed out")
             raise TimeoutError("Download of result image timed out")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to download result image: {str(e)}")
             raise RuntimeError(f"Failed to download result image: {str(e)}")
 
 # --- BMI and Body Type Classes ---
@@ -595,13 +599,6 @@ class BodyTypeClassifier:
     @staticmethod
     def classify_body_type(gender, chest, waist, hip, shoulder_width=None):
         logger.debug(f"Classifying body type for gender: {gender}, chest: {chest}, waist: {waist}, hip: {hip}, shoulder_width: {shoulder_width}")
-        """
-        Classify body type based on measurements.
-        
-        Body types:
-        Male: Rectangle, Triangle (V-shape), Inverted Triangle, Trapezoid
-        Female: Hourglass, Pear, Apple, Rectangle, Inverted Triangle
-        """
         gender = gender.lower()
         
         if gender == 'male':
@@ -632,7 +629,6 @@ class BodyTypeClassifier:
         logger.debug("Classifying female body type.")
         """Classify female body type."""
         bust_hip_diff = abs(chest - hip)
-        
         if bust_hip_diff < 5 and (hip - waist) > 10:
             return "hourglass"
         elif hip > chest + 5:
@@ -1356,13 +1352,16 @@ def process():
                             )
                         else:
                             error_messages.append(
-                                f"❌ Side image: {validation_results['side_message']}"
+                                f" Side image: {validation_results['side_message']}"
                             )
                     
                     # Add general validation errors
                     if validation_results['errors']:
+                        logger.debug("Adding general validation errors.")
                         for err in validation_results['errors']:
-                            if err not in str(error_messages):  # Avoid duplicates
+                            logger.debug(f"Validation error: {err}")
+                            if err not in str(error_messages): 
+                                logger.debug("Appending new error message.") 
                                 error_messages.append(f"⚠️ {err}")
                     
                     error_message = "\n\n".join(error_messages)
