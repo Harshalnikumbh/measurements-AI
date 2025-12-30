@@ -6,12 +6,15 @@ import torch
 import joblib
 import trimesh
 import logging
+import hashlib
 import requests
 import numpy as np
 from pathlib import Path
 from datetime import datetime
+from flask_caching import Cache
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template, send_file
+
 
 # Define a central logger for the application
 logger = logging.getLogger('BodyApp')
@@ -88,6 +91,35 @@ os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 os.makedirs(app.config['TRYON_FOLDER'], exist_ok=True)
 logger.info("Upload, output, and try-on result folders are set up.")
 
+#-- Cache Configuration ---
+cache_config = {
+    'CACHE_TYPE': 'FileSystemCache',  # Use 'RedisCache' for production with Redis
+    'CACHE_DIR': 'cache',  # Directory for cache files
+    'CACHE_DEFAULT_TIMEOUT': 300,  # Default timeout in seconds
+    'CACHE_THRESHOLD': 500  # Maximum number of items in cache
+}
+app.config.from_mapping(cache_config)
+cache = Cache(app)
+
+# Create cache directory
+os.makedirs(app.config['CACHE_DIR'], exist_ok=True)
+logger.info("Cache system initialized.")
+
+# --- Cache Helper Functions ---
+def generate_image_hash(image_path):
+    """Generate SHA256 hash of an image file for cache key."""
+    try:
+        with open(image_path, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()[:16]  # Use first 16 chars
+    except Exception as e:
+        logger.warning(f"Could not generate hash for {image_path}: {e}")
+        return None
+
+def generate_cache_key(*args):
+    """Generate a cache key from multiple arguments."""
+    key_string = '_'.join(str(arg) for arg in args)
+    return hashlib.md5(key_string.encode()).hexdigest()
+
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Virtual Try-On API Configuration
@@ -111,6 +143,38 @@ class PoseValidator:
             logger.critical("Attempted to instantiate PoseValidator but MediaPipe is not available.")
             raise RuntimeError("MediaPipe is not available for pose validation")
         self.mp_pose = mp.solutions.pose
+
+    # Add this method to the PoseValidator class (around line ~195)
+    def validate_images_cached(self, front_image_path, side_image_path):
+        """
+        Validate both images with caching.
+        Returns: (overall_success, detailed_results)
+        """
+        # Generate cache keys based on image hashes
+        front_hash = generate_image_hash(front_image_path)
+        side_hash = generate_image_hash(side_image_path)
+        
+        if front_hash is None or side_hash is None:
+            logger.warning("Could not generate image hashes for pose validation, proceeding without cache")
+            return self.validate_images(front_image_path, side_image_path)
+    
+        cache_key = f"pose_validation_{front_hash}_{side_hash}"
+    
+        # Check cache
+        cached_result = cache.get(cache_key)
+        if cached_result is not None:
+            logger.info(f"✓ Cache hit for pose validation: {cache_key}")
+            return cached_result
+        
+        # Cache miss - perform validation
+        logger.info(f"Cache miss for pose validation: {cache_key}, validating...")
+        result = self.validate_images(front_image_path, side_image_path)
+        
+        # Cache the result (900 seconds = 15 minutes)
+        cache.set(cache_key, result, timeout=900)
+        logger.info(f"✓ Cached pose validation result: {cache_key}")
+        
+        return result
     
     @staticmethod
     def calculate_angle(a, b, c):
@@ -781,11 +845,66 @@ def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
         return None
     
 # --- Measurement Calculation Class ---
-
 class CompleteBodyMeasurementsCalculator:
-    logger.debug("Calculating complete body measurements with corrections.")
     """Enhanced calculator with BMI and body type corrections."""
     
+    def __init__(self, gender, weight, height):
+        self.gender = gender.lower()
+        self.weight = weight  # in kg
+        self.height = height  # in cm
+        
+        if self.gender not in ['male', 'female']:
+            logger.error("Invalid gender provided for measurements calculator.")
+            raise ValueError("Gender must be 'male' or 'female'")
+        
+        # Calculate BMI
+        self.bmi = BMICalculator.calculate_bmi(weight, height)
+        self.bmi_category = BMICalculator.categorize_bmi(self.bmi)
+    
+    def calculate_all_measurements_cached(self, front_obj, side_obj):
+        """
+        Calculate all measurements with caching.
+        Cache key based on mesh files + gender + height + weight.
+        """
+        # Generate cache key
+        try:
+            front_hash = generate_image_hash(front_obj) if os.path.exists(front_obj) else None
+            side_hash = generate_image_hash(side_obj) if os.path.exists(side_obj) else None
+            
+            if front_hash is None or side_hash is None:
+                logger.warning("Could not generate mesh hashes, proceeding without cache")
+                return self.calculate_all_measurements(front_obj, side_obj)
+            
+            cache_key = generate_cache_key(
+                'measurements',
+                front_hash,
+                side_hash,
+                self.gender,
+                self.height,
+                self.weight
+            )
+            
+            # Check cache
+            cached_result = cache.get(cache_key)
+            if cached_result is not None:
+                logger.info(f"✓ Cache hit for measurements: {cache_key}")
+                return cached_result
+            
+            # Cache miss - calculate measurements
+            logger.info(f"Cache miss for measurements: {cache_key}, calculating...")
+            result = self.calculate_all_measurements(front_obj, side_obj)
+            
+            if result is not None:
+                # Cache the result (1800 seconds = 30 minutes)
+                cache.set(cache_key, result, timeout=1800)
+                logger.info(f"✓ Cached measurements: {cache_key}")
+            
+            return result
+            
+        except Exception as e:
+            logger.warning(f"Cache error in measurements: {e}, proceeding without cache")
+            return self.calculate_all_measurements(front_obj, side_obj)
+
     def __init__(self, gender, weight, height):
         self.gender = gender.lower()
         self.weight = weight  # in kg
@@ -1055,8 +1174,48 @@ class CompleteBodyMeasurementsCalculator:
 # --- HMR2 Processing Function ---
 
 def process_image_to_mesh(img_path, output_path, model, detector, renderer, model_cfg):
+    """Process image to 3D mesh using HMR2 with caching."""
+    
+    # Generate cache key based on image content
+    img_hash = generate_image_hash(img_path)
+    if img_hash is None:
+        logger.warning("Could not generate image hash, proceeding without cache")
+        return _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg)
+    
+    cache_key = f"hmr2_mesh_{img_hash}"
+    
+    # Check if mesh exists in cache
+    cached_mesh_data = cache.get(cache_key)
+    
+    if cached_mesh_data is not None:
+        logger.info(f"✓ Cache hit for HMR2 mesh: {cache_key}")
+        try:
+            # Write cached mesh data to output file
+            with open(output_path, 'w') as f:
+                f.write(cached_mesh_data)
+            return output_path
+        except Exception as e:
+            logger.warning(f"Failed to restore cached mesh: {e}")
+    
+    # Cache miss - process the image
+    logger.info(f"Cache miss for HMR2 mesh: {cache_key}, processing...")
+    result_path = _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg)
+    
+    if result_path and os.path.exists(result_path):
+        try:
+            # Cache the mesh file content (3600 seconds = 60 minutes)
+            with open(result_path, 'r') as f:
+                mesh_data = f.read()
+            cache.set(cache_key, mesh_data, timeout=3600)  # 60 minutes
+            logger.info(f"✓ Cached HMR2 mesh: {cache_key}")
+        except Exception as e:
+            logger.warning(f"Failed to cache mesh: {e}")
+    
+    return result_path
+
+def _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg):
+    """Internal function - actual HMR2 processing logic."""
     logger.debug(f"Processing image to 3D mesh: {img_path} -> {output_path}")
-    """Process image to 3D mesh using HMR2."""
     img_cv2 = cv2.imread(str(img_path))
     
     det_out = detector(img_cv2)
@@ -1093,7 +1252,6 @@ def process_image_to_mesh(img_path, output_path, model, detector, renderer, mode
         return output_path
         
     return None
-
 # --- HMR2 Model Initialization ---
 
 model = None
@@ -1323,7 +1481,7 @@ def process():
             logger.debug("Performing pose validation using MediaPipe.")
             try:
                 validator = PoseValidator()
-                is_valid, validation_results = validator.validate_images(front_path, side_path)
+                is_valid, validation_results = validator.validate_images_cached(front_path, side_path)
                 
                 if not is_valid:
                     # Build detailed error message
@@ -1423,7 +1581,7 @@ def process():
         # Calculate measurements with BMI and body type corrections
         logger.debug("Calculating body measurements...")
         calculator = CompleteBodyMeasurementsCalculator(gender, weight, height)
-        measurements = calculator.calculate_all_measurements(front_obj, side_obj)
+        measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
         
         if measurements is None:
             return jsonify({
@@ -1467,6 +1625,38 @@ def process():
                     logger.debug(f"Cleaned up: {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to cleanup {file_path}: {str(e)}")
+
+
+@app.route('/admin/clear-cache', methods=['POST'])
+def clear_cache():
+    """Clear all cache entries."""
+    try:
+        cache.clear()
+        logger.info("Cache cleared successfully")
+        return jsonify({'success': True, 'message': 'Cache cleared successfully'})
+    except Exception as e:
+        logger.error(f"Failed to clear cache: {e}")
+        return jsonify({'success': False, 'error': str(e)})
+
+@app.route('/admin/cache-stats', methods=['GET'])
+def cache_stats():
+    """Get cache statistics."""
+    try:
+        # This works with FileSystemCache
+        cache_dir = app.config.get('CACHE_DIR', 'cache')
+        if os.path.exists(cache_dir):
+            files = os.listdir(cache_dir)
+            total_size = sum(os.path.getsize(os.path.join(cache_dir, f)) 
+                           for f in files if os.path.isfile(os.path.join(cache_dir, f)))
+            return jsonify({
+                'success': True,
+                'cache_entries': len(files),
+                'total_size_mb': round(total_size / (1024 * 1024), 2)
+            })
+        return jsonify({'success': True, 'cache_entries': 0, 'total_size_mb': 0})
+    except Exception as e:
+        logger.error(f"Failed to get cache stats: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

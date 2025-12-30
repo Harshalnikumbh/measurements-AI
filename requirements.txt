@@ -17,3 +17,5 @@ trimesh==4.0.5
 requests==2.31.0
 
 detectron2 @ git+https://github.com/facebookresearch/detectron2.git
+
+Flask-Caching==2.0.2
