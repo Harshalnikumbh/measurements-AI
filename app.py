@@ -905,19 +905,6 @@ class CompleteBodyMeasurementsCalculator:
             logger.warning(f"Cache error in measurements: {e}, proceeding without cache")
             return self.calculate_all_measurements(front_obj, side_obj)
 
-    def __init__(self, gender, weight, height):
-        self.gender = gender.lower()
-        self.weight = weight  # in kg
-        self.height = height  # in cm
-        
-        if self.gender not in ['male', 'female']:
-            logger.error("Invalid gender provided for measurements calculator.")
-            raise ValueError("Gender must be 'male' or 'female'")
-        
-        # Calculate BMI
-        self.bmi = BMICalculator.calculate_bmi(weight, height)
-        self.bmi_category = BMICalculator.categorize_bmi(self.bmi)
-    
     def load_obj_file(self, filepath, is_side_view=False):
         logger.debug(f"Loading OBJ file: {filepath} (side view: {is_side_view})")
         """Load OBJ file, detect units, and apply auto-rotation for side views."""
@@ -1127,7 +1114,14 @@ class CompleteBodyMeasurementsCalculator:
         results = MeasurementCorrector.apply_corrections(
             results, self.gender, body_type, self.bmi_category
         )
+        # Calculate arm hole circumference (chest × 0.42)
+        chest_cm = results['chest']['circumference']['cm']
+        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.40)
         
+        results['armhole'] = {
+            'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
+        }
+
         # Calculate recommended clothing size
         chest_cm = results['chest']['circumference']['cm']
         waist_cm = results['waist']['circumference']['cm']
