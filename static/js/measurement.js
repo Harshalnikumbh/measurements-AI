@@ -205,6 +205,9 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('armTotalCm', m.arm?.total_length?.cm);
             safeUpdate('armTotalIn', m.arm?.total_length?.inches);
 
+            safeUpdate('armholeCircCm', m.armhole?.circumference?.cm);
+            safeUpdate('armholeCircIn', m.armhole?.circumference?.inches);
+
             // Show results with smooth scroll
             if (results) {
                 results.classList.add('active');
