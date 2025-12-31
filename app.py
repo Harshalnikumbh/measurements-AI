@@ -1116,10 +1116,29 @@ class CompleteBodyMeasurementsCalculator:
         )
         # Calculate arm hole circumference (chest × 0.42)
         chest_cm = results['chest']['circumference']['cm']
-        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.40)
-        
+        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.45)
+        logging.debug(f"Calculating armhole circumference: {armhole_cm} cm.")
+
         results['armhole'] = {
             'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
+        }
+
+        # Calculate Upper Thigh Circumference 
+        hip_cm = results['hip']['circumference']['cm']
+        thigh_cm = hip_cm * (0.55 if self.gender == 'male' else 0.60)
+        logging.debug(f"Calculating upper thigh circumference: {thigh_cm} cm.")
+
+        results['upper_thigh'] = {
+            'circumference': {'cm': round(thigh_cm, 2), 'inches': round(thigh_cm * cm_to_in, 2)}
+        }
+
+        # Calculate Knee Circumference
+        upper_thigh_cm = results['upper_thigh']['circumference']['cm']
+        knee_cm = upper_thigh_cm * (0.72 if self.gender == 'male' else 0.75)
+        logging.debug(f"Calculating knee circumference: {knee_cm} cm.")
+
+        results['knee'] = {
+            'circumference': {'cm': round(knee_cm, 2), 'inches': round(knee_cm * cm_to_in, 2)}
         }
 
         # Calculate recommended clothing size
