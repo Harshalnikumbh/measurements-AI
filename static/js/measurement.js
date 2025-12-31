@@ -181,32 +181,50 @@ document.addEventListener('DOMContentLoaded', function () {
             /* ===============================
                Measurements
             =============================== */
+
+            // Neck Circumference
             safeUpdate('neckCircCm', m.neck?.circumference?.cm);
             safeUpdate('neckCircIn', m.neck?.circumference?.inches);
 
+            // Chest Circumference
             safeUpdate('chestCircCm', m.chest?.circumference?.cm);
             safeUpdate('chestCircIn', m.chest?.circumference?.inches);
 
+            // Waist Circumference
             safeUpdate('waistCircCm', m.waist?.circumference?.cm);
             safeUpdate('waistCircIn', m.waist?.circumference?.inches);
 
+            // Hip Circumference
             safeUpdate('hipCircCm', m.hip?.circumference?.cm);
             safeUpdate('hipCircIn', m.hip?.circumference?.inches);
 
+            // Shoulder Width
             safeUpdate('shoulderWidthCm', m.shoulder?.width?.cm);
             safeUpdate('shoulderWidthIn', m.shoulder?.width?.inches);
 
+            // Arm Lengths
             safeUpdate('armHandCm', m.arm?.hand_to_elbow?.cm);
             safeUpdate('armHandIn', m.arm?.hand_to_elbow?.inches);
 
+            // Shoulder width 
             safeUpdate('armShoulderCm', m.arm?.shoulder_to_elbow?.cm);
             safeUpdate('armShoulderIn', m.arm?.shoulder_to_elbow?.inches);
 
+            // Total arm length
             safeUpdate('armTotalCm', m.arm?.total_length?.cm);
             safeUpdate('armTotalIn', m.arm?.total_length?.inches);
 
+            // Armhole circumference
             safeUpdate('armholeCircCm', m.armhole?.circumference?.cm);
             safeUpdate('armholeCircIn', m.armhole?.circumference?.inches);
+
+            // Thigh circumference
+            safeUpdate('upperThighCircCm', m.upper_thigh?.circumference?.cm);
+            safeUpdate('upperThighCircIn', m.upper_thigh?.circumference?.inches);
+
+            // Knee circumference
+            safeUpdate('kneeCircCm', m.knee?.circumference?.cm);
+            safeUpdate('kneeCircIn', m.knee?.circumference?.inches);
 
             // Show results with smooth scroll
             if (results) {
