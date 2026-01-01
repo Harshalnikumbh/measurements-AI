@@ -1042,3 +1042,32 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* Body Type Dropdown Styling */
+.form-control {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 1em;
+    transition: all 0.3s ease;
+    background-color: white;
+    cursor: pointer;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-control option {
+    padding: 10px;
+}
+
+.form-group label[for="body_type"] {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #2c3e50;
+}

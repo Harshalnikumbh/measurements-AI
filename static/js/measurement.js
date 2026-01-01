@@ -1,6 +1,28 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     /* ===============================
+       Body Type Dropdown - Dynamic Filtering by Gender
+    =============================== */
+    const bodyTypeSelect = document.getElementById('bodyType');
+    
+    function updateBodyTypeOptions() {
+        const selectedGender = document.querySelector('input[name="gender"]:checked').value;
+        const options = bodyTypeSelect.querySelectorAll('option[data-gender]');
+        
+        // Reset selection when gender changes
+        bodyTypeSelect.value = '';
+        
+        // Show/hide options based on selected gender
+        options.forEach(option => {
+            if (option.dataset.gender === selectedGender) {
+                option.style.display = 'block';
+            } else {
+                option.style.display = 'none';
+            }
+        });
+    }
+
+    /* ===============================
        Gender selection
     =============================== */
     document.querySelectorAll('.gender-option').forEach(function (option) {
@@ -10,8 +32,14 @@ document.addEventListener('DOMContentLoaded', function () {
             });
             this.classList.add('selected');
             this.querySelector('input').checked = true;
+            
+            // Update body type dropdown when gender changes
+            updateBodyTypeOptions();
         });
     });
+    
+    // Initialize body type options on page load
+    updateBodyTypeOptions();
 
     /* ===============================
        Upload setup
@@ -171,11 +199,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     bmiCategoryEl.className = 'result-category ' + getBMICategoryClass(meta.bmi_category);
                 }
 
-                // Body Type
-                safeUpdate('bodyType', formatBodyType(meta.body_type));
+                // Body Type (calculated) - FIXED ID
+                safeUpdate('bodyTypeResult', formatBodyType(meta.body_type));
 
                 // Recommended Size
                 safeUpdate('recommendedSize', meta.recommended_size || '-');
+                
+                // Log user's selected body type (for debugging)
+                if (meta.body_type_input) {
+                    console.log('User selected body type:', meta.body_type_input);
+                }
             }
 
             /* ===============================

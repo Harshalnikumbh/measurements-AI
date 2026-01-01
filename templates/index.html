@@ -29,6 +29,23 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="body_type">Body Type</label>
+                    <select name="body_type" id="bodyType" class="form-control" required>
+                        <option value=""> Select Body Type </option>
+                        <!-- Male options -->
+                        <option value="slim" data-gender="male">Slim</option>
+                        <option value="avg" data-gender="male">Average</option>
+                        <option value="athletic" data-gender="male">Athletic</option>
+                        <option value="heavy" data-gender="male">Heavy</option>
+                        <!-- Female options -->
+                        <option value="slim" data-gender="female">Slim</option>
+                        <option value="avg" data-gender="female">Average</option>
+                        <option value="curvy" data-gender="female">Curvy</option>
+                        <option value="heavy" data-gender="female">Heavy</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label>Your Height</label>
                     <div class="input-row">
                         <div class="input-box">
@@ -103,7 +120,7 @@
                     <!-- Body Type Card -->
                     <div class="result-card body-type-card">
                         <div class="result-label">👤 Body Type</div>
-                        <div class="result-value body-type-value" id="bodyType">-</div>
+                        <div class="result-value body-type-value" id="bodyTypeResult">-</div>
                     </div>
 
                     <!-- Recommended Size Card - NEW -->
