@@ -8,11 +8,13 @@ import trimesh
 import logging
 import hashlib
 import requests
+import threading
 import numpy as np
 from pathlib import Path
 from datetime import datetime
 from flask_caching import Cache
 from werkzeug.utils import secure_filename
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, render_template, send_file
 
 
@@ -44,6 +46,10 @@ except ImportError:
 
 if 'PYOPENGL_PLATFORM' in os.environ:
     del os.environ['PYOPENGL_PLATFORM']
+
+
+# Thread lock for model inference
+model_lock = threading.Lock()
 
 # Try to import HMR2 dependencies
 HMR2_AVAILABLE = False
@@ -1185,7 +1191,6 @@ class CompleteBodyMeasurementsCalculator:
         return results
 
 # --- HMR2 Processing Function ---
-
 def process_image_to_mesh(img_path, output_path, model, detector, renderer, model_cfg):
     """Process image to 3D mesh using HMR2 with caching."""
     
@@ -1231,6 +1236,7 @@ def _process_image_to_mesh_internal(img_path, output_path, model, detector, rend
     logger.debug(f"Processing image to 3D mesh: {img_path} -> {output_path}")
     img_cv2 = cv2.imread(str(img_path))
     
+    # Detection (thread-safe as it creates new instances)
     det_out = detector(img_cv2)
     det_instances = det_out['instances']
     valid_idx = (det_instances.pred_classes == 0) & (det_instances.scores > 0.5)
@@ -1245,8 +1251,11 @@ def _process_image_to_mesh_internal(img_path, output_path, model, detector, rend
     for batch in dataloader:
         logger.debug("Running HMR2 model inference.")
         batch = recursive_to(batch, device)
-        with torch.no_grad():
-            out = model(batch)
+        
+        # Use lock for model inference to ensure thread safety
+        with model_lock:
+            with torch.no_grad():
+                out = model(batch)
         
         verts = out['pred_vertices'][0].detach().cpu().numpy()
         pred_cam = out['pred_cam']
@@ -1265,8 +1274,8 @@ def _process_image_to_mesh_internal(img_path, output_path, model, detector, rend
         return output_path
         
     return None
-# --- HMR2 Model Initialization ---
 
+# --- HMR2 Model Initialization ---
 model = None
 model_cfg = None
 detector = None
@@ -1450,7 +1459,7 @@ def process():
             logger.debug("HMR2 model not installed.")
             return jsonify({'success': False, 'error': 'HMR2 model is not installed. Please install the HMR2 dependencies to enable body measurement functionality.'})
         
-        # Get form data
+        # Get form data FIRST
         gender = request.form.get('gender', 'male')
         height = float(request.form.get('height', 170))
         height_unit = request.form.get('height_unit', 'cm')
@@ -1507,8 +1516,6 @@ def process():
                         if validation_results['front_angle'] is not None:
                             error_messages.append(
                                 f" Front image: Person appears to be bending. "
-                                # f"Detected waist angle: {validation_results['front_angle']:.1f}° "
-                                # f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
                                 f"Please upload a front image where you're standing straight with arms by your sides."
                             )
                         else:
@@ -1563,14 +1570,46 @@ def process():
         else:
             logger.debug("Warning: MediaPipe not available, skipping pose validation")
         
-        # === PROCEED WITH HMR2 PROCESSING ===
-        # Process images to 3D meshes
+        # === PARALLEL HMR2 PROCESSING ===
+        # NOW we can do parallel processing with all variables defined
         front_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'front_mesh_{timestamp}.obj')
         side_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'side_mesh_{timestamp}.obj')
         
-        logger.debug("Processing front image with HMR2...")
-        front_result = process_image_to_mesh(front_path, front_obj, model, detector, renderer, model_cfg)
+        logger.debug("Processing front and side images in parallel with HMR2...")
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit both tasks
+            front_future = executor.submit(
+                process_image_to_mesh, 
+                front_path, 
+                front_obj, 
+                model, 
+                detector, 
+                renderer, 
+                model_cfg
+            )
+            side_future = executor.submit(
+                process_image_to_mesh, 
+                side_path, 
+                side_obj, 
+                model, 
+                detector, 
+                renderer, 
+                model_cfg
+            )
+
+            # Wait for both to complete and get results
+            try:
+                front_result = front_future.result(timeout=300 )  # 5 minute timeout
+                side_result = side_future.result(timeout=300 )
+            except Exception as e:
+                logger.error(f"Error during parallel processing: {str(e)}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Processing failed: {str(e)}'
+                })
         
+        # Check results
         if front_result is None:
             return jsonify({
                 'success': False,
@@ -1581,9 +1620,6 @@ def process():
                         '• You are the only person in the image'
             })
         
-        logger.debug("Processing side image with HMR2...")
-        side_result = process_image_to_mesh(side_path, side_obj, model, detector, renderer, model_cfg)
-        
         if side_result is None:
             return jsonify({
                 'success': False,
@@ -1593,6 +1629,8 @@ def process():
                         '• The image has good lighting\n'
                         '• You are the only person in the image'
             })
+        
+        logger.debug("✓ Both images processed successfully!")
         
         # Calculate measurements with BMI and body type corrections
         logger.debug("Calculating body measurements...")
@@ -1641,8 +1679,7 @@ def process():
                     logger.debug(f"Cleaned up: {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to cleanup {file_path}: {str(e)}")
-
-
+                    
 @app.route('/admin/clear-cache', methods=['POST'])
 def clear_cache():
     """Clear all cache entries."""
