@@ -16,11 +16,11 @@ from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, render_template, send_file
 
 
-# Define a central logger for the application
+# central logger for the application
 logger = logging.getLogger('BodyApp')
 logger.setLevel(logging.INFO) # Set default logging level
 
-# Create a console handler and set the level to INFO
+# console handler and set the level to INFO
 ch = logging.StreamHandler()
 ch.setLevel(logging.INFO)
 
@@ -39,7 +39,7 @@ try:
     import mediapipe as mp
     MEDIAPIPE_AVAILABLE = True
 except ImportError:
-    print("MediaPipe not available. Pose validation will be skipped.")
+    logger.warning("MediaPipe is not available. Pose validation will be disabled.")
     MEDIAPIPE_AVAILABLE = False
 
 if 'PYOPENGL_PLATFORM' in os.environ:
@@ -132,7 +132,6 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Pose Validation Class ---
-
 class PoseValidator:
     """Validate that the person is standing straight using MediaPipe Pose."""
     
@@ -347,7 +346,6 @@ class PoseValidator:
         return overall_success, results
 
 # --- Clothing Size Recommendation Class ---
-
 class ClothingSizeRecommender:
     """Recommend clothing size based on body measurements."""
     
@@ -407,7 +405,6 @@ class ClothingSizeRecommender:
         return best_size
 
 # --- Virtual Try-On Functions ---
-
 class VirtualTryOnService:
     """Service class for handling virtual try-on operations."""
     
@@ -589,7 +586,7 @@ class VirtualTryOnService:
                         result_url = output.get("url") or output.get("imageUrl") or output.get("resultUrl")
                         if not result_url:
                             logger.error(f"Output dict does not contain a URL: {output}")
-                            raise ValueError(f"Output is a dict but no URL found: {output}")
+                            raise ValueError(f"Output is a dic   mt but no URL found: {output}")
                         return result_url
                     elif isinstance(output, str):
                         logger.info("Output is a string URL.")
@@ -848,10 +845,11 @@ def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
 class CompleteBodyMeasurementsCalculator:
     """Enhanced calculator with BMI and body type corrections."""
     
-    def __init__(self, gender, weight, height):
+    def __init__(self, gender, weight, height, body_type=None):
         self.gender = gender.lower()
         self.weight = weight  # in kg
-        self.height = height  # in cm
+        self.height = height
+        self.body_type_input = body_type  # User-provided body type
         
         if self.gender not in ['male', 'female']:
             logger.error("Invalid gender provided for measurements calculator.")
@@ -878,11 +876,12 @@ class CompleteBodyMeasurementsCalculator:
             cache_key = generate_cache_key(
                 'measurements',
                 front_hash,
-                side_hash,
-                self.gender,
-                self.height,
-                self.weight
-            )
+                side_hash,           
+                self.gender,           
+                self.height,           
+                self.weight,           
+                self.body_type_input or 'none'           
+            )           
             
             # Check cache
             cached_result = cache.get(cache_key)
@@ -1177,6 +1176,7 @@ class CompleteBodyMeasurementsCalculator:
             'bmi': self.bmi,
             'bmi_category': self.bmi_category,
             'body_type': body_type,
+            'body_type_input': self.body_type_input,
             'recommended_size': recommended_size,
             'height': {'cm': self.height, 'inches': round(self.height * cm_to_in, 2)},
             'weight': {'kg': self.weight, 'lbs': round(self.weight * 2.20462, 2)}
@@ -1364,7 +1364,7 @@ def virtual_tryon_process():
         logger.debug("Person image uploaded successfully")
         
         tryon_service.upload_image(clothing_upload_url, clothing_path)
-        logger.debug("Clothing image uploaded successfully")
+        logger.debug("Clothing image uploaded successfully") 
         
         # Step 3: Start virtual try-on
         logger.debug("Starting virtual try-on...")
@@ -1464,7 +1464,10 @@ def process():
         # Convert weight to kg if needed
         if weight_unit == 'lbs':
             weight = weight * 0.453592
-        
+
+        # Get body type
+        body_type = request.form.get('body_type', None)
+
         # Check for uploaded files
         if 'front_image' not in request.files or 'side_image' not in request.files:
             return jsonify({'success': False, 'error': 'Both front and side images are required'})
@@ -1503,20 +1506,20 @@ def process():
                     if not validation_results['front_accepted']:
                         if validation_results['front_angle'] is not None:
                             error_messages.append(
-                                f"❌ Front image: Person appears to be bending. "
+                                f" Front image: Person appears to be bending. "
                                 # f"Detected waist angle: {validation_results['front_angle']:.1f}° "
                                 # f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
                                 f"Please upload a front image where you're standing straight with arms by your sides."
                             )
                         else:
                             error_messages.append(
-                                f"❌ Front image: {validation_results['front_message']}"
+                                f" Front image: {validation_results['front_message']}"
                             )
                     
                     if not validation_results['side_accepted']:
                         if validation_results['side_angle'] is not None:
                             error_messages.append(
-                                f"❌ Side image: Person appears to be bending. "
+                                f" Side image: Person appears to be bending. "
                                 f"Detected waist angle: {validation_results['side_angle']:.1f}° "
                                 f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
                                 f"Please upload a side image where you're standing straight."
@@ -1593,7 +1596,7 @@ def process():
         
         # Calculate measurements with BMI and body type corrections
         logger.debug("Calculating body measurements...")
-        calculator = CompleteBodyMeasurementsCalculator(gender, weight, height)
+        calculator = CompleteBodyMeasurementsCalculator(gender, weight, height, body_type)
         measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
         
         if measurements is None:
