@@ -259,6 +259,10 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('kneeCircCm', m.knee?.circumference?.cm);
             safeUpdate('kneeCircIn', m.knee?.circumference?.inches);
 
+            // Body Length
+            safeUpdate('bodyLengthCm', m.body_length?.length?.cm);
+            safeUpdate('bodyLengthIn', m.body_length?.length?.inches);
+
             // Show results with smooth scroll
             if (results) {
                 results.classList.add('active');

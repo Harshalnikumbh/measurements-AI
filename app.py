@@ -287,11 +287,14 @@ class PoseValidator:
             RA = self.mp_pose.PoseLandmark.RIGHT_ANKLE.value
             
             # Choose the more visible side
-            use_left = get_visibility(LS) > get_visibility(RS)
-            
-            shoulder = get_point(LS if use_left else RS)
-            hip = get_point(LH if use_left else RH)
-            ankle = get_point(LA if use_left else RA)
+            use_left = get_visibility(LS) > get_visibility(RS)                                          
+
+            shoulder = get_point(LS if use_left else RS)                                          
+
+            hip = get_point(LH if use_left else RH)                                          
+
+            ankle = get_point(LA if use_left else RA)                                          
+
             
             # Calculate waist angle
             angle = self.calculate_angle(shoulder, hip, ankle)
@@ -1023,7 +1026,6 @@ class CompleteBodyMeasurementsCalculator:
         """Adjust chest circumference based on weight (males only) - legacy method."""
         if self.gender != 'male':
             return chest_circumference
-        
         if 55 <= self.weight <= 65:
             return chest_circumference + 3
         elif 67 <= self.weight <= 75:
@@ -1071,10 +1073,10 @@ class CompleteBodyMeasurementsCalculator:
         
         if front_mesh is None or side_mesh is None:
             return None
-        
-        cm_to_in = 0.393701
-        results = {}
-        
+                                 
+        cm_to_in = 0.393701                         
+        results = {}                         
+                                 
         measurement_points = [
             ('neck', 0.07),
             ('chest', 0.28),
@@ -1144,6 +1146,15 @@ class CompleteBodyMeasurementsCalculator:
 
         results['knee'] = {
             'circumference': {'cm': round(knee_cm, 2), 'inches': round(knee_cm * cm_to_in, 2)}
+        }
+
+        # Calculate body length
+        if self.gender == 'male':
+            body_length_cm = self.height * 0.28
+        else:
+            body_length_cm = self.height * 0.27
+        results['body_length'] = {
+            'length': {'cm': round(body_length_cm, 2), 'inches': round(body_length_cm * cm_to_in, 2)}
         }
 
         # Calculate recommended clothing size
