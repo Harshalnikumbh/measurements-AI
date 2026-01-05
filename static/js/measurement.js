@@ -223,6 +223,36 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('chestCircCm', m.chest?.circumference?.cm);
             safeUpdate('chestCircIn', m.chest?.circumference?.inches);
 
+            // Chest Circumference
+            safeUpdate('chestCircCm', m.chest?.circumference?.cm);
+            safeUpdate('chestCircIn', m.chest?.circumference?.inches);
+
+            // Upper Chest Circumference (Females Only)
+            const upperChestCard = document.getElementById('upperChestCard');
+            if (m.upper_chest && upperChestCard) {
+                safeUpdate('upperChestCircCm', m.upper_chest?.circumference?.cm);
+                safeUpdate('upperChestCircIn', m.upper_chest?.circumference?.inches);
+                upperChestCard.style.display = 'block';
+                upperChestCard.classList.add('show');
+            } else if (upperChestCard) {
+                upperChestCard.style.display = 'none';
+            }
+
+            // Lower Chest Circumference (Females Only)
+            const lowerChestCard = document.getElementById('lowerChestCard');
+            if (m.lower_chest && lowerChestCard) {
+                safeUpdate('lowerChestCircCm', m.lower_chest?.circumference?.cm);
+                safeUpdate('lowerChestCircIn', m.lower_chest?.circumference?.inches);
+                lowerChestCard.style.display = 'block';
+                lowerChestCard.classList.add('show');
+            } else if (lowerChestCard) {
+                lowerChestCard.style.display = 'none';
+            }
+
+            // Waist Circumference
+            safeUpdate('waistCircCm', m.waist?.circumference?.cm);
+            safeUpdate('waistCircIn', m.waist?.circumference?.inches);
+
             // Waist Circumference
             safeUpdate('waistCircCm', m.waist?.circumference?.cm);
             safeUpdate('waistCircIn', m.waist?.circumference?.inches);
