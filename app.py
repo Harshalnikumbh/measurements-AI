@@ -1024,17 +1024,28 @@ class CompleteBodyMeasurementsCalculator:
     def adjust_chest_by_weight(self, chest_circumference):
         logger.debug("Adjusting chest circumference based on weight (legacy method).")
         """Adjust chest circumference based on weight (males only) - legacy method."""
-        if self.gender != 'male':
-            return chest_circumference
-        if 55 <= self.weight <= 65:
-            return chest_circumference + 3
-        elif 67 <= self.weight <= 75:
-            return chest_circumference + 7
-        elif 75 < self.weight <= 85:
-            return chest_circumference + 10
-        else:
-            return chest_circumference
-    
+
+        if self.gender == 'male':
+            # Male adjustments
+            if 55 <= self.weight <= 65:
+                return chest_circumference + 3
+            elif 67 <= self.weight <= 75:
+                return chest_circumference + 7
+            elif 75 < self.weight <= 85:
+                return chest_circumference + 10
+            else:
+                return chest_circumference
+        elif self.gender == 'female':
+            # Female adjustments
+            if 50 <= self.weight <= 55:
+                return chest_circumference - 15
+            elif 55 < self.weight <= 60:
+                return chest_circumference - 10
+            elif 65 <= self.weight <= 70:
+                return chest_circumference - 5
+            else:
+                return chest_circumference
+        
     def estimate_shoulder_width(self, mesh, real_height):
         logger.debug("Estimating shoulder width.")
         """Estimates shoulder width."""
@@ -1094,14 +1105,32 @@ class CompleteBodyMeasurementsCalculator:
             c = self.ramanujan_ellipse_circumference(a, b)
             
             # Apply legacy male chest adjustment
-            if name == 'chest' and self.gender == 'male':
-                c = c + 5.0
+            if name == 'chest':
+                if self.gender == 'male':
+                    c = c + 5.0
                 c = self.adjust_chest_by_weight(c)
-            
+        
             results[name] = {
                 'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
             }
-        
+    
+        # Calculate Upper Chest and Lower Chest (females only)
+        if self.gender == 'female':
+            logger.debug("Calculating female chest measurements.")
+            full_chest_cm = results['chest']['circumference']['cm']
+
+            #Upper and lower chest as percentages of full chest
+            upper_chest_cm = full_chest_cm * 0.90
+            lower_chest_cm = full_chest_cm * 0.81
+
+            results['upper_chest'] = {
+                'circumference': {'cm': round(upper_chest_cm, 2), 'inches': round(upper_chest_cm * cm_to_in, 2)}
+            }
+            results['lower_chest'] = {
+                'circumference': {'cm': round(lower_chest_cm, 2), 'inches': round(lower_chest_cm * cm_to_in, 2)}
+            }
+            logger.info(f"Female chest measurements: Upper - {upper_chest_cm} cm, Lower - {lower_chest_cm} cm.")
+
         # Shoulder width
         sw = self.estimate_shoulder_width(front_mesh, self.height)
         results['shoulder'] = {
@@ -1121,10 +1150,11 @@ class CompleteBodyMeasurementsCalculator:
         results = MeasurementCorrector.apply_corrections(
             results, self.gender, body_type, self.bmi_category
         )
+
         # Calculate arm hole circumference (chest × 0.42)
         chest_cm = results['chest']['circumference']['cm']
-        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.45)
-        logging.debug(f"Calculating armhole circumference: {armhole_cm} cm.")
+        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.44)
+        logger.debug(f"Calculating armhole circumference: {armhole_cm} cm.")
 
         results['armhole'] = {
             'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
@@ -1133,7 +1163,7 @@ class CompleteBodyMeasurementsCalculator:
         # Calculate Upper Thigh Circumference 
         hip_cm = results['hip']['circumference']['cm']
         thigh_cm = hip_cm * (0.55 if self.gender == 'male' else 0.60)
-        logging.debug(f"Calculating upper thigh circumference: {thigh_cm} cm.")
+        logger.debug(f"Calculating upper thigh circumference: {thigh_cm} cm.")
 
         results['upper_thigh'] = {
             'circumference': {'cm': round(thigh_cm, 2), 'inches': round(thigh_cm * cm_to_in, 2)}
@@ -1142,7 +1172,7 @@ class CompleteBodyMeasurementsCalculator:
         # Calculate Knee Circumference
         upper_thigh_cm = results['upper_thigh']['circumference']['cm']
         knee_cm = upper_thigh_cm * (0.72 if self.gender == 'male' else 0.75)
-        logging.debug(f"Calculating knee circumference: {knee_cm} cm.")
+        logger.debug(f"Calculating knee circumference: {knee_cm} cm.")
 
         results['knee'] = {
             'circumference': {'cm': round(knee_cm, 2), 'inches': round(knee_cm * cm_to_in, 2)}
@@ -1378,7 +1408,7 @@ def virtual_tryon_process():
         clothing_upload_url, clothing_image_url = tryon_service.get_upload_url(clothing_path)
         logger.debug(f"Clothing image URL obtained: {clothing_image_url[:50]}...")
         
-        # Step 2: Upload images
+        # Upload images
         logger.debug("Uploading images to LightX API...")
         tryon_service.upload_image(person_upload_url, person_path)
         logger.debug("Person image uploaded successfully")
