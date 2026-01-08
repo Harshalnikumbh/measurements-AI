@@ -78,15 +78,17 @@ logger.info(f"Using device: {device}")
 
 # --- Flask App Configuration ---
 app = Flask(__name__)
-ML_MODEL_AVAILABLE = True
-try:
-    SIZE_MODEL = joblib.load("size_model.joblib")
-    SCALER = joblib.load("scaler.joblib")
-    GENDER_ENCODER = joblib.load("gender_encoder.joblib")
-    logger.info("ML Size models (joblib) loaded successfully.")
-except Exception as e:
-    logger.warning(f"ML Size models could not be loaded: {e}. ML size prediction will be disabled.")    
-    ML_MODEL_AVAILABLE = False
+# --- ML Model Loading --- [CURRENBTLY ONLY SIZE MODEL]
+ML_MODEL_AVAILABLE = False
+
+# try:
+#     SIZE_MODEL = joblib.load("size_model.joblib")
+#     SCALER = joblib.load("scaler.joblib")
+#     GENDER_ENCODER = joblib.load("gender_encoder.joblib")
+#     logger.info("ML Size models (joblib) loaded successfully.")
+# except Exception as e:
+#     logger.warning(f"ML Size models could not be loaded: {e}. ML size prediction will be disabled.")    
+#     ML_MODEL_AVAILABLE = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['OUTPUT_FOLDER'] = 'output'
 app.config['TRYON_FOLDER'] = 'tryon_results'
@@ -734,7 +736,206 @@ class BMICalculator:
             return "overweight"
         else:
             return "obese"
+        
+# Correction Engine Class for Obese and Overweight Users   
+class MeasurementCorrectionEngine:
+    """
+    Advanced correction engine that applies proportional adjustments
+    based on multiple user characteristics.
+    """
+    
+    # BASE DELTAS (ONLY PLACE WHERE CM ARE INTRODUCED)
+    BASE_DELTA = {
+        "waist": 1.5,
+        "hip": 2.0,
+        "armhole": 1.2
+    }
+    
+    # SCALES (ALL MULTIPLICATIVE)
+    AGE_SCALE = {
+        "teen": 0.0,
+        "adult": 1.0,
+        "middle_age": 1.2,
+        "senior": 1.4
+    }
+    
+    BMI_SCALE = {
+        "underweight": 0.0,
+        "normal": 1.0,
+        "overweight": 1.3,
+        "obese": 1.6
+    }
+    
+    MUSCLE_SCALE = {
+        "low": 1.1,
+        "moderate": 1.0,
+        "high": 0.7,
+        "very_high": 0.6
+    }
+    
+    ACTIVITY_SCALE = {
+        "sedentary": 1.1,
+        "light": 1.05,
+        "moderate": 1.0,
+        "active": 0.95,
+        "very_active": 0.6
+    }
+    
+    GOAL_SCALE = {
+        "health": 0.85,
+        "clothing": 0.95,
+        "fitness": 1.0,
+        "general": 0.95
+    }
+    
+    FIT_SCALE = {
+        "tight": 0.97,
+        "regular": 1.0,
+        "loose": 1.05,
+        "oversized": 1.10
+    }
+    
+    # HARD SAFETY CAPS (CM)
+    MAX_DELTA = {
+        "waist": 2.0,
+        "hip": 3.0,
+        "armhole": 2.0
+    }
+    
+    @staticmethod
+    def apply(
+        results,
+        gender,
+        age_group,
+        bmi_category,
+        fat_distribution,
+        body_type,
+        muscle_level,
+        activity_level,
+        shoulder_type,
+        measurement_goal,
+        fit_preference
+    ):
+        logger.debug(f"Applying MeasurementCorrectionEngine with BMI: {bmi_category}, Age: {age_group}")
 
+        # PROTECTED MEASUREMENTS (REFERENCE POINT)
+        PROTECTED_MEASUREMENTS = []
+        if gender == 'female':
+            PROTECTED_MEASUREMENTS = ['chest']
+
+        # --- COPY ORIGINAL VALUES FOR SAFETY ---
+        original = {}
+        for k in ['waist', 'hip', 'armhole']:
+            if k in results and 'circumference' in results[k]:
+                original[k] = results[k]['circumference']['cm']
+            elif k in results and 'cm' in results[k]:
+                original[k] = results[k]['cm']
+        
+        # FAT DISTRIBUTION → ROUTING (NO ADDITION FOR UNDERWEIGHT)
+        if bmi_category == "underweight":
+            target = None
+            logger.debug("BMI underweight - skipping fat distribution corrections")
+        elif fat_distribution == "upper":
+            target = "waist"
+            logger.debug("Fat distribution: upper → targeting waist")
+        elif fat_distribution == "lower":
+            target = "hip"
+            logger.debug("Fat distribution: lower → targeting hip")
+        elif fat_distribution == "middle":
+            target = "waist"
+            logger.debug("Fat distribution: middle → targeting waist")
+        else:
+            # 'even' or balanced
+            target = "waist"
+            logger.debug("Fat distribution: even → targeting waist")
+        
+        # BUILD GLOBAL SCALE (ALL MULTIPLICATIVE)
+        scale = 1.0
+        scale *= MeasurementCorrectionEngine.AGE_SCALE.get(age_group, 1.0)
+        scale *= MeasurementCorrectionEngine.BMI_SCALE.get(bmi_category, 1.0)
+        scale *= MeasurementCorrectionEngine.MUSCLE_SCALE.get(muscle_level, 1.0)
+        scale *= MeasurementCorrectionEngine.ACTIVITY_SCALE.get(activity_level, 1.0)
+        scale *= MeasurementCorrectionEngine.GOAL_SCALE.get(measurement_goal, 1.0)
+        
+        logger.debug(f"Global scale calculated: {scale:.3f}")
+        
+        # APPLY SINGLE BASE DELTA (ONLY ONCE)
+        if target and scale > 0 and target in results:
+            base_delta = MeasurementCorrectionEngine.BASE_DELTA[target]
+            delta = base_delta * scale
+            max_allowed = MeasurementCorrectionEngine.MAX_DELTA[target]
+            delta = min(delta, max_allowed)
+            
+            logger.debug(f"Applying delta to {target}: {delta:.2f} cm (capped at {max_allowed})")
+            
+            # Apply to correct structure
+            if 'circumference' in results[target]:
+                results[target]['circumference']['cm'] += round(delta, 2)
+                results[target]['circumference']['inches'] = round(
+                    results[target]['circumference']['cm'] * 0.393701, 2
+                )
+            elif 'cm' in results[target]:
+                results[target]['cm'] += round(delta, 2)
+                results[target]['inches'] = round(
+                    results[target]['cm'] * 0.393701, 2
+                )
+        
+        # SHOULDER TYPE → LOCAL ARMHOLE ADJUSTMENT
+        if (
+            age_group != "teen"
+            and bmi_category != "underweight"
+            and "armhole" in results
+        ):
+            arm_delta = 0.0
+            
+            if shoulder_type == "broad" or shoulder_type == "very_broad":
+                arm_delta = 0.8 * scale
+                logger.debug(f"Broad shoulders: adding {arm_delta:.2f} cm to armhole")
+            elif shoulder_type == "narrow":
+                arm_delta = -0.6 * scale
+                logger.debug(f"Narrow shoulders: subtracting {abs(arm_delta):.2f} cm from armhole")
+            
+            if arm_delta != 0 and 'armhole' in original:
+                if 'circumference' in results['armhole']:
+                    results['armhole']['circumference']['cm'] += round(arm_delta, 2)
+                    # Cap armhole
+                    results['armhole']['circumference']['cm'] = min(
+                        results['armhole']['circumference']['cm'],
+                        original['armhole'] + MeasurementCorrectionEngine.MAX_DELTA['armhole']
+                    )
+                    results['armhole']['circumference']['inches'] = round(
+                        results['armhole']['circumference']['cm'] * 0.393701, 2
+                    )
+        
+        # FINAL FIT PREFERENCE (LAST STEP - APPLIES TO ALL MEASUREMENTS)
+        fit_scale = MeasurementCorrectionEngine.FIT_SCALE.get(fit_preference, 1.0)
+        
+        if fit_scale != 1.0:
+            logger.debug(f"Applying fit preference scale: {fit_scale}")
+            
+            for k in results:
+                if k in PROTECTED_MEASUREMENTS:
+                    logger.debug(f"Skipping protected measurement: {k}")
+                    continue
+
+                if 'circumference' in results[k]:
+                    results[k]['circumference']['cm'] = round(
+                        results[k]['circumference']['cm'] * fit_scale, 2
+                    )
+                    results[k]['circumference']['inches'] = round(
+                        results[k]['circumference']['cm'] * 0.393701, 2
+                    )
+
+                elif 'width' in results[k]:
+                    results[k]['width']['cm'] = round(
+                        results[k]['width']['cm'] * fit_scale, 2
+                    )
+                    results[k]['width']['inches'] = round(
+                        results[k]['width']['cm'] * 0.393701, 2
+                    )
+        logger.debug("MeasurementCorrectionEngine corrections applied successfully")
+        return results
+    
 class MeasurementCorrector:
     logger.debug("Applying measurement corrections based on BMI and body type.")
     """Apply correction factors based on BMI and body type."""
@@ -826,39 +1027,53 @@ class MeasurementCorrector:
     
 # --- ML Size Prediction Function ---
 def predict_size_ml(height_cm, chest_cm, waist_cm, hip_cm, gender):
-    logger.debug("Predicting clothing size using ML model.")
-    if not ML_MODEL_AVAILABLE:
-        logger.warning("ML model not available for size prediction.")
-        return None
-    try:
-        logger.debug("Preparing input features for ML model.")
-        gender_encoded = GENDER_ENCODER.transform([gender])[0]
+    # currently disabled
 
-        # IMPORTANT: feature order must match training
-        X = np.array([[
-            height_cm,
-            chest_cm,
-            waist_cm,
-            hip_cm,
-            gender_encoded
-        ]])
+    # logger.debug("Predicting clothing size using ML model.")
+    # if not ML_MODEL_AVAILABLE:
+    #     logger.warning("ML model not available for size prediction.")
+    #     return None
+    # try:
+    #     logger.debug("Preparing input features for ML model.")
+    #     gender_encoded = GENDER_ENCODER.transform([gender])[0]
 
-        X_scaled = SCALER.transform(X)
-        return SIZE_MODEL.predict(X_scaled)[0]
+    #     # IMPORTANT: feature order must match training
+    #     X = np.array([[
+    #         height_cm,
+    #         chest_cm,
+    #         waist_cm,
+    #         hip_cm,
+    #         gender_encoded
+    #     ]])
 
-    except Exception as e:
-        print("ML prediction failed:", e)
+    #     X_scaled = SCALER.transform(X)
+    #     return SIZE_MODEL.predict(X_scaled)[0]
+
+    # except Exception as e:
+    #     print("ML prediction failed:", e)
         return None
     
 # --- Measurement Calculation Class ---
 class CompleteBodyMeasurementsCalculator:
     """Enhanced calculator with BMI and body type corrections."""
     
-    def __init__(self, gender, weight, height, body_type=None):
+    def __init__(self, gender, weight, height, body_type=None, 
+                 age_group='adult', fat_distribution='even', 
+                 muscle_level='moderate', activity_level='moderate',
+                 shoulder_type='average', measurement_goal='clothing',
+                 fit_preference='regular'):
         self.gender = gender.lower()
         self.weight = weight  # in kg
-        self.height = height
-        self.body_type_input = body_type  # User-provided body type
+        self.height = height  # in cm
+        self.body_type_input = body_type
+        # New correction parameters
+        self.age_group = age_group
+        self.fat_distribution = fat_distribution
+        self.muscle_level = muscle_level
+        self.activity_level = activity_level
+        self.shoulder_type = shoulder_type
+        self.measurement_goal = measurement_goal
+        self.fit_preference = fit_preference
         
         if self.gender not in ['male', 'female']:
             logger.error("Invalid gender provided for measurements calculator.")
@@ -867,7 +1082,10 @@ class CompleteBodyMeasurementsCalculator:
         # Calculate BMI
         self.bmi = BMICalculator.calculate_bmi(weight, height)
         self.bmi_category = BMICalculator.categorize_bmi(self.bmi)
-    
+        
+        logger.debug(f"Calculator initialized: BMI={self.bmi}, Category={self.bmi_category}, "
+                    f"Age Group={age_group}, Fat Dist={fat_distribution}")
+
     def calculate_all_measurements_cached(self, front_obj, side_obj):
         """
         Calculate all measurements with caching.
@@ -1003,19 +1221,37 @@ class CompleteBodyMeasurementsCalculator:
     
     def get_semi_axes(self, width, depth, mtype):
         logger.debug(f"Getting semi-axes for measurement type: {mtype}.")
-        """Adjusts width/depth to semi-axes for the ellipse formula."""
+        """Adjusts width/depth to semi-axes for the ellipse formula.""" 
         if mtype == 'neck':
-            a = width / 3
-            b = depth / 3 if self.gender == 'male' else depth / 4
+            if self.gender == 'male':
+                a = width / 2.5
+                b = depth / 3 
+            else:
+                a = width / 2.2
+                b = depth / 3
         elif mtype == 'chest':
-            a = width / 3 if self.gender == 'male' else width / 2
-            b = depth / 4
+            if self.gender == 'male':
+                a = width / 3 
+                b = depth / 4
+            else:
+                a = width / 3
+                b = depth / 4.2
         elif mtype == 'waist':
-            a = width / 3
-            b = depth / 4
+            if self.gender == 'male':
+                a = width / 3 
+                b = depth / 4
+            # Female
+            else:
+                a = width / 3.5
+                b = depth / 4.5
         elif mtype == 'hip':
-            a = width / 3 if self.gender == 'male' else width / 2
-            b = depth / 4
+            if self.gender == 'male':
+                a = width / 3
+                b = depth / 4
+            # Female
+            else:
+                a = width / 3.1
+                b = depth / 4
         else:
             a = width / 2
             b = depth / 2
@@ -1035,17 +1271,64 @@ class CompleteBodyMeasurementsCalculator:
                 return chest_circumference + 10
             else:
                 return chest_circumference
+            
+            # Adjusted by weight only
+        # elif self.gender == 'female':
+        #     # Female adjustments
+        #     if 50 <= self.weight <= 55:
+        #         return chest_circumference - 15
+        #     elif 55 < self.weight <= 60:
+        #         return chest_circumference - 10
+        #     elif 65 <= self.weight <= 70:
+        #         return chest_circumference - 5
+        #     else:
+        #         return chest_circumference
+
+        # ADJUSTED BY RAW CHEST ONLY ) (FEMALES)
         elif self.gender == 'female':
-            # Female adjustments
-            if 50 <= self.weight <= 55:
-                return chest_circumference - 15
-            elif 55 < self.weight <= 60:
-                return chest_circumference - 10
-            elif 65 <= self.weight <= 70:
+
+            if 90 < chest_circumference <= 95:
+                return chest_circumference - 8
+            elif 85 < chest_circumference <= 90:
                 return chest_circumference - 5
+            elif 80 < chest_circumference <= 85:
+                return chest_circumference - 3
             else:
                 return chest_circumference
         
+        # Waist adjustment for females only
+    def adjust_waist_by_weight_female(self, waist_circumference):
+        logger.debug("Adjusting waist circumference based on weight (female).")
+
+        if self.gender != 'female':
+            return waist_circumference
+
+        if 25 <= self.weight < 40:
+            return waist_circumference - 12
+        elif 40 <= self.weight < 50:
+            return waist_circumference - 10
+        elif 50 <= self.weight < 60:
+            return waist_circumference - 8
+        elif 60 <= self.weight <= 65:
+            return waist_circumference - 6
+        else:
+            return waist_circumference
+
+    # Adjust hip for males only
+    def adjust_hips_weight(self, hip_circumference):
+        logger.debug("Adjusting hip circumference based on weight (legacy method).")
+        """Adjust hip circumference based on weight (male only) - legacy method."""
+
+        if self.gender == 'male':
+            if 55 <= self.weight <= 65:
+                return hip_circumference + 8.5
+            elif 67 <= self.weight <= 75:
+                return hip_circumference + 10
+            elif 75 < self.weight <= 85:
+                return hip_circumference + 13
+            else:
+                return hip_circumference
+
     def estimate_shoulder_width(self, mesh, real_height):
         logger.debug("Estimating shoulder width.")
         """Estimates shoulder width."""
@@ -1104,7 +1387,7 @@ class CompleteBodyMeasurementsCalculator:
             a, b = self.get_semi_axes(w, d, name)
             c = self.ramanujan_ellipse_circumference(a, b)
             
-            # Apply legacy male chest adjustment
+            # Apply legacy adjustment
             if name == 'chest':
                 if self.gender == 'male':
                     c = c + 5.0
@@ -1113,6 +1396,16 @@ class CompleteBodyMeasurementsCalculator:
             results[name] = {
                 'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
             }
+            if name == 'waist' and self.gender == 'female':
+                c = self.adjust_waist_by_weight_female(c)
+                results[name] = {
+                    'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
+                }
+            if name == 'hip' and self.gender == 'male':
+                c = self.adjust_hips_weight(c)
+                results[name] = {
+                    'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
+                }
     
         # Calculate Upper Chest and Lower Chest (females only)
         if self.gender == 'female':
@@ -1147,8 +1440,19 @@ class CompleteBodyMeasurementsCalculator:
         )
         
         # Apply BMI and body type corrections
-        results = MeasurementCorrector.apply_corrections(
-            results, self.gender, body_type, self.bmi_category
+        logger.info("Applying advanced MeasurementCorrectionEngine")
+        results = MeasurementCorrectionEngine.apply(
+        results=results,
+        gender=self.gender,
+        age_group=self.age_group,
+        bmi_category=self.bmi_category,
+        fat_distribution=self.fat_distribution,
+        body_type=body_type,
+        muscle_level=self.muscle_level,
+        activity_level=self.activity_level,
+        shoulder_type=self.shoulder_type,
+        measurement_goal=self.measurement_goal,
+        fit_preference=self.fit_preference
         )
 
         # Calculate arm hole circumference (chest × 0.42)
@@ -1192,18 +1496,25 @@ class CompleteBodyMeasurementsCalculator:
         waist_cm = results['waist']['circumference']['cm']
         hip_cm   = results['hip']['circumference']['cm']
 
-        ml_size = predict_size_ml(
-                    self.height,
-                    chest_cm,
-                    waist_cm,
-                    hip_cm,
-                    self.gender
-        )
+        # ml_size = predict_size_ml(
+        #             self.height,
+        #             chest_cm,
+        #             waist_cm,
+        #             hip_cm,
+        #             self.gender
+        # )
         chest_in = chest_cm * 0.393701
         waist_in = waist_cm * 0.393701
         hip_in   = hip_cm * 0.393701
 
-        recommended_size = ml_size if ml_size else ClothingSizeRecommender.recommend_size(
+
+        # ML size prediction is currently disabled
+        # recommended_size = ml_size if ml_size else ClothingSizeRecommender.recommend_size(
+        #                     chest_in, waist_in, hip_in
+        #                     )
+
+        # RULE BASED SIZE RECOMMENDATION
+        recommended_size = ClothingSizeRecommender.recommend_size(
                             chest_in, waist_in, hip_in
                             )
         
@@ -1228,7 +1539,27 @@ class CompleteBodyMeasurementsCalculator:
             'height': {'cm': self.height, 'inches': round(self.height * cm_to_in, 2)},
             'weight': {'kg': self.weight, 'lbs': round(self.weight * 2.20462, 2)}
         }
-        
+
+        # ================= FINAL FLOAT NORMALIZATION =================
+        for k, v in results.items():
+            if not isinstance(v, dict):
+                continue
+
+            if 'circumference' in v:
+                cm = float(v['circumference']['cm'])
+                v['circumference']['cm'] = round(cm, 2)
+                v['circumference']['inches'] = round(cm * 0.393701, 2)
+
+            if 'width' in v:
+                cm = float(v['width']['cm'])
+                v['width']['cm'] = round(cm, 2)
+                v['width']['inches'] = round(cm * 0.393701, 2)
+
+            if 'length' in v:
+                cm = float(v['length']['cm'])
+                v['length']['cm'] = round(cm, 2)
+                v['length']['inches'] = round(cm * 0.393701, 2)
+
         return results
 
 # --- HMR2 Processing Function ---
@@ -1400,7 +1731,7 @@ def virtual_tryon_process():
         # Initialize virtual try-on service
         tryon_service = VirtualTryOnService()
         
-        # Step 1: Get upload URLs
+        # Get upload URLs
         logger.debug("Obtaining upload URLs from LightX API.")
         person_upload_url, person_image_url = tryon_service.get_upload_url(person_path)
         logger.debug(f"Person image URL obtained: {person_image_url[:50]}...")
@@ -1416,7 +1747,7 @@ def virtual_tryon_process():
         tryon_service.upload_image(clothing_upload_url, clothing_path)
         logger.debug("Clothing image uploaded successfully") 
         
-        # Step 3: Start virtual try-on
+        # Start virtual try-on
         logger.debug("Starting virtual try-on...")
         order_id = tryon_service.start_virtual_tryon(
             person_image_url, 
@@ -1425,12 +1756,12 @@ def virtual_tryon_process():
         )
         logger.info(f"Virtual try-on started with order ID: {order_id}")
         
-        # Step 4: Check status and get result
+        # Check status and get result
         logger.info(f"Checking status for order: {order_id}")
         result_url = tryon_service.check_status(order_id)
         logger.info(f"Result URL obtained: {result_url[:50]}...")
         
-        # Step 5: Download result image
+        #  Download result image
         result_filename = f"tryon_result_{timestamp}.jpg"
         result_path = os.path.join(app.config['TRYON_FOLDER'], result_filename)
         tryon_service.download_result_image(result_url, result_path)
@@ -1498,27 +1829,52 @@ def process():
         # Check if HMR2 is available
         if not HMR2_AVAILABLE:
             logger.debug("HMR2 model not installed.")
-            return jsonify({'success': False, 'error': 'HMR2 model is not installed. Please install the HMR2 dependencies to enable body measurement functionality.'})
+            return jsonify({'success': False, 'error': 'HMR2 model is not installed.'})
         
-        # Get form data FIRST
+        # ===== EXTRACT ALL FORM DATA =====
         gender = request.form.get('gender', 'male')
         height = float(request.form.get('height', 170))
         height_unit = request.form.get('height_unit', 'cm')
         weight = float(request.form.get('weight', 70))
         weight_unit = request.form.get('weight_unit', 'kg')
         
-        # Convert height to cm if needed
+        # Convert units
         if height_unit == 'm':
             height = height * 100
-        
-        # Convert weight to kg if needed
         if weight_unit == 'lbs':
             weight = weight * 0.453592
-
-        # Get body type
+        
+        # Get body type and age
         body_type = request.form.get('body_type', None)
-
-        # Check for uploaded files
+        age = int(request.form.get('age', 25))
+        
+        # ===== NEW CORRECTION PARAMETERS =====
+        # Age group (from frontend or calculate from age)
+        age_group = request.form.get('age_group')
+        if not age_group:
+            if age < 18:
+                age_group = 'teen'
+            elif age < 45:
+                age_group = 'adult'
+            elif age < 65:
+                age_group = 'middle_age'
+            else:
+                age_group = 'senior'
+        
+        # Get all correction parameters with defaults
+        fat_distribution = request.form.get('fat_distribution', 'even')
+        muscle_level = request.form.get('muscle_level', 'moderate')
+        activity_level = request.form.get('activity_level', 'moderate')
+        shoulder_type = request.form.get('shoulder_type', 'average')
+        measurement_goal = request.form.get('measurement_goal', 'clothing')
+        fit_preference = request.form.get('fit_preference', 'regular')
+        
+        logger.info(f"Processing with correction params - Age Group: {age_group}, "
+                   f"Fat Dist: {fat_distribution}, Muscle: {muscle_level}, "
+                   f"Activity: {activity_level}, Shoulder: {shoulder_type}, "
+                   f"Goal: {measurement_goal}, Fit: {fit_preference}")
+        
+        # ===== FILE UPLOAD HANDLING =====
         if 'front_image' not in request.files or 'side_image' not in request.files:
             return jsonify({'success': False, 'error': 'Both front and side images are required'})
         
@@ -1542,7 +1898,7 @@ def process():
         front_file.save(front_path)
         side_file.save(side_path)
         
-        # === POSE VALIDATION ===
+        # ===== POSE VALIDATION =====
         if MEDIAPIPE_AVAILABLE:
             logger.debug("Performing pose validation using MediaPipe.")
             try:
@@ -1556,34 +1912,30 @@ def process():
                     if not validation_results['front_accepted']:
                         if validation_results['front_angle'] is not None:
                             error_messages.append(
-                                f" Front image: Person appears to be bending. "
+                                f"❌ Front image: Person appears to be bending. "
                                 f"Please upload a front image where you're standing straight with arms by your sides."
                             )
                         else:
                             error_messages.append(
-                                f" Front image: {validation_results['front_message']}"
+                                f"❌ Front image: {validation_results['front_message']}"
                             )
                     
                     if not validation_results['side_accepted']:
                         if validation_results['side_angle'] is not None:
                             error_messages.append(
-                                f" Side image: Person appears to be bending. "
+                                f"❌ Side image: Person appears to be bending. "
                                 f"Detected waist angle: {validation_results['side_angle']:.1f}° "
                                 f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
                                 f"Please upload a side image where you're standing straight."
                             )
                         else:
                             error_messages.append(
-                                f" Side image: {validation_results['side_message']}"
+                                f"❌ Side image: {validation_results['side_message']}"
                             )
                     
-                    # Add general validation errors
                     if validation_results['errors']:
-                        logger.debug("Adding general validation errors.")
                         for err in validation_results['errors']:
-                            logger.debug(f"Validation error: {err}")
-                            if err not in str(error_messages): 
-                                logger.debug("Appending new error message.") 
+                            if err not in str(error_messages):
                                 error_messages.append(f"⚠️ {err}")
                     
                     error_message = "\n\n".join(error_messages)
@@ -1591,7 +1943,7 @@ def process():
                                     "• Stand upright with your back straight\n" \
                                     "• Keep arms relaxed at your sides\n" \
                                     "• Ensure full body is visible in frame\n" \
-                                    "• Use good lighting and clear background."
+                                    "• Use good lighting and clear background"
                     
                     logger.debug("Pose validation failed.")
                     return jsonify({
@@ -1601,25 +1953,17 @@ def process():
                     })
                 
                 logger.debug("✓ Pose validation passed for both images")
-                logger.debug(f"  - Front: {validation_results['front_message']}")
-                logger.debug(f"  - Side: {validation_results['side_message']}")
                 
             except Exception as e:
                 logger.warning(f"Pose validation failed with error: {str(e)}")
-                logger.debug("Proceeding without pose validation...")
-                # Continue processing even if validation fails
-        else:
-            logger.debug("Warning: MediaPipe not available, skipping pose validation")
         
-        # === PARALLEL HMR2 PROCESSING ===
-        # NOW we can do parallel processing with all variables defined
+        # ===== PARALLEL HMR2 PROCESSING =====
         front_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'front_mesh_{timestamp}.obj')
         side_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'side_mesh_{timestamp}.obj')
         
         logger.debug("Processing front and side images in parallel with HMR2...")
-
+        
         with ThreadPoolExecutor(max_workers=2) as executor:
-            # Submit both tasks
             front_future = executor.submit(
                 process_image_to_mesh, 
                 front_path, 
@@ -1638,11 +1982,10 @@ def process():
                 renderer, 
                 model_cfg
             )
-
-            # Wait for both to complete and get results
+            
             try:
-                front_result = front_future.result(timeout=300 )  # 5 minute timeout
-                side_result = side_future.result(timeout=300 )
+                front_result = front_future.result(timeout=300)
+                side_result = side_future.result(timeout=300)
             except Exception as e:
                 logger.error(f"Error during parallel processing: {str(e)}")
                 return jsonify({
@@ -1654,43 +1997,44 @@ def process():
         if front_result is None:
             return jsonify({
                 'success': False,
-                'error': 'Could not detect a person in the front image. Please ensure:\n'
-                        '• The full body is visible in the frame\n'
-                        '• You are standing against a clear background\n'
-                        '• The image has good lighting\n'
-                        '• You are the only person in the image'
+                'error': 'Could not detect a person in the front image.'
             })
         
         if side_result is None:
             return jsonify({
                 'success': False,
-                'error': 'Could not detect a person in the side image. Please ensure:\n'
-                        '• The full body is visible in the frame\n'
-                        '• You are standing against a clear background\n'
-                        '• The image has good lighting\n'
-                        '• You are the only person in the image'
+                'error': 'Could not detect a person in the side image.'
             })
         
         logger.debug("✓ Both images processed successfully!")
         
-        # Calculate measurements with BMI and body type corrections
-        logger.debug("Calculating body measurements...")
-        calculator = CompleteBodyMeasurementsCalculator(gender, weight, height, body_type)
+        # ===== CALCULATE MEASUREMENTS WITH NEW CORRECTION ENGINE =====
+        logger.debug("Calculating body measurements with advanced corrections...")
+        calculator = CompleteBodyMeasurementsCalculator(
+            gender=gender,
+            weight=weight,
+            height=height,
+            body_type=body_type,
+            age_group=age_group,
+            fat_distribution=fat_distribution,
+            muscle_level=muscle_level,
+            activity_level=activity_level,
+            shoulder_type=shoulder_type,
+            measurement_goal=measurement_goal,
+            fit_preference=fit_preference
+        )
+        
         measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
         
         if measurements is None:
             return jsonify({
                 'success': False,
-                'error': 'Error calculating measurements from the 3D models. This may happen if:\n'
-                        '• The body pose is too complex\n'
-                        '• Parts of the body are obscured\n'
-                        '• The images are of low quality\n\n'
-                        'Please try again with clearer images where you are standing straight.'
+                'error': 'Error calculating measurements from the 3D models.'
             })
         
         logger.debug("✓ Measurements calculated successfully!")
         
-        # Cleanup uploaded files and temporary mesh files
+        # Cleanup
         for f in [front_path, side_path, front_obj, side_obj]:
             if f and os.path.exists(f):
                 try:
@@ -1701,7 +2045,6 @@ def process():
         return jsonify({'success': True, 'measurements': measurements})
         
     except ValueError as e:
-        # User input validation errors
         return jsonify({'success': False, 'error': str(e)})
     except Exception as e:
         logger.error(f"Unexpected error in /process: {str(e)}")
@@ -1709,15 +2052,13 @@ def process():
         traceback.print_exc()
         return jsonify({
             'success': False,
-            'error': f'An unexpected error occurred while processing your images. Please try again with different images.'
+            'error': f'An unexpected error occurred while processing your images.'
         })
     finally:
-        # Ensure cleanup of uploaded files
         for file_path in [front_path, side_path]:
             if file_path and os.path.exists(file_path):
                 try:
                     os.remove(file_path)
-                    logger.debug(f"Cleaned up: {file_path}")
                 except Exception as e:
                     logger.warning(f"Failed to cleanup {file_path}: {str(e)}")
                     
