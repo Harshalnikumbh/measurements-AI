@@ -12,90 +12,242 @@
 
 <section class="measurement-section">
     <div class="container">
-        <div class="measurement-card">
+        <!-- Start Button (Initial State) -->
+        <div class="measurement-card" id="startContainer">
+            <div class="start-content">
+                <h2>🎯 AI Body Measurement System</h2>
+                <p class="start-description">Get accurate body measurements in 6 easy steps</p>
+                <button type="button" class="submit-btn" id="startMeasurementBtn">
+                    Start Measurement
+                </button>
+            </div>
+        </div>
+
+        <!-- Multi-Step Form (Hidden Initially) -->
+        <div class="measurement-card" id="formContainer" style="display: none;">
+            <!-- Progress Indicator -->
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text">
+                    Step <span id="currentStep">1</span> of 6
+                </div>
+            </div>
+
             <form id="measurementForm">
-                <div class="form-group">
-                    <label>Select Gender</label>
-                    <div class="gender-select">
-                        <label class="gender-option selected">
-                            <input type="radio" name="gender" value="male" checked>
-                            <span>Male</span>
-                        </label>
-                        <label class="gender-option">
-                            <input type="radio" name="gender" value="female">
-                            <span>Female</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="body_type">Body Type</label>
-                    <select name="body_type" id="bodyType" class="form-control" required>
-                        <option value=""> Select Body Type </option>
-                        <!-- Male options -->
-                        <option value="slim" data-gender="male">Slim</option>
-                        <option value="avg" data-gender="male">Average</option>
-                        <option value="athletic" data-gender="male">Athletic</option>
-                        <option value="heavy" data-gender="male">Heavy</option>
-                        <!-- Female options -->
-                        <option value="slim" data-gender="female">Slim</option>
-                        <option value="avg" data-gender="female">Average</option>
-                        <option value="curvy" data-gender="female">Curvy</option>
-                        <option value="heavy" data-gender="female">Heavy</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label>Your Height</label>
-                    <div class="input-row">
-                        <div class="input-box">
-                            <input type="number" name="height" id="heightInput" placeholder="Height (e.g., 170)" required step="0.1">
-                        </div>
-                        <div class="input-box">
-                            <select name="height_unit" id="heightUnit">
-                                <option value="cm">Centimeters (cm)</option>
-                                <option value="m">Meters (m)</option>
-                            </select>
+                
+                <!-- STEP 1: Basic Info -->
+                <div class="form-step active" data-step="1">
+                    <h3 class="step-title">📋 Basic Information</h3>
+                    
+                    <div class="form-group">
+                        <label>Select Gender *</label>
+                        <div class="gender-select">
+                            <label class="gender-option selected">
+                                <input type="radio" name="gender" value="male" checked required>
+                                <span>Male</span>
+                            </label>
+                            <label class="gender-option">
+                                <input type="radio" name="gender" value="female" required>
+                                <span>Female</span>
+                            </label>
                         </div>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label>Your Weight</label>
-                    <div class="input-row">
-                        <div class="input-box">
-                            <input type="number" name="weight" id="weightInput" placeholder="Weight (e.g., 65)" required step="0.1">
+                   <div class="form-group">
+                     <label for="age">Age *</label>
+                        <div class="input-row">
+                            <div class="input-box">
+                                <input
+                                    type="number"
+                                    name="age"
+                                    id="age"
+                                    placeholder="Enter your age"
+                                    required
+                                    min="13"
+                                    max="100"
+                                        >
+                    </div>
+        <!-- Empty column for layout balance -->
+        <div></div>
+    </div>
+</div>
+
+                    <div class="form-group">
+                        <label>Your Height *</label>
+                        <div class="input-row">
+                            <div class="input-box">
+                                <input type="number" name="height" id="heightInput" placeholder="Height (e.g., 170)" required step="0.1" min="100" max="250">
+                            </div>
+                            <div class="input-box">
+                                <select name="height_unit" id="heightUnit">
+                                    <option value="cm">Centimeters (cm)</option>
+                                    <option value="m">Meters (m)</option>
+                                </select>
+                            </div>
                         </div>
-                        <div class="input-box">
-                            <select name="weight_unit" id="weightUnit">
-                                <option value="kg">Kilograms (kg)</option>
-                                <option value="lbs">Pounds (lbs)</option>
-                            </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Your Weight *</label>
+                        <div class="input-row">
+                            <div class="input-box">
+                                <input type="number" name="weight" id="weightInput" placeholder="Weight (e.g., 65)" required step="0.1" min="30" max="300">
+                            </div>
+                            <div class="input-box">
+                                <select name="weight_unit" id="weightUnit">
+                                    <option value="kg">Kilograms (kg)</option>
+                                    <option value="lbs">Pounds (lbs)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="upload-section">
-                    <div class="upload-box" id="frontUpload">
-                        <input type="file" id="frontImage" name="front_image" accept="image/*" required>
-                        <img src="{{ url_for('static', filename='front_icon.png') }}" alt="Front View" class="upload-icon-img">
-                        <div><strong>Front View</strong><br>Click to upload</div>
-                        <div class="file-name" id="frontFileName"></div>
-                        <img class="preview-image" id="frontPreview">
+                <!-- STEP 2: Body Context -->
+                <div class="form-step" data-step="2">
+                    <h3 class="step-title">👤 Body Context</h3>
+                    
+                    <div class="form-group">
+                        <label for="fatDistribution">Fat Distribution *</label>
+                        <select name="fat_distribution" id="fatDistribution" class="form-control" required>
+                            <option value="">Select Fat Distribution</option>
+                            <option value="upper">Upper Body (Arms, Chest, Shoulders)</option>
+                            <option value="middle">Mid Section (Waist, Belly)</option>
+                            <option value="lower">Lower Body (Hips, Thighs)</option>
+                            <option value="even">Evenly Distributed</option>
+                        </select>
                     </div>
 
-                    <div class="upload-box" id="sideUpload">
-                        <input type="file" id="sideImage" name="side_image" accept="image/*" required>
-                        <img src="{{ url_for('static', filename='side_icon.png') }}" alt="Side View" class="upload-icon-img">
-                        <div><strong>Side View</strong><br>Click to upload</div>
-                        <div class="file-name" id="sideFileName"></div>
-                        <img class="preview-image" id="sidePreview">
+                    <div class="form-group">
+                        <label for="bodyType">Body Type *</label>
+                        <select name="body_type" id="bodyType" class="form-control" required>
+                            <option value="">Select Body Type</option>
+                            <!-- Male options -->
+                            <option value="slim" data-gender="male">Slim</option>
+                            <option value="avg" data-gender="male">Average</option>
+                            <option value="athletic" data-gender="male">Athletic</option>
+                            <option value="heavy" data-gender="male">Heavy</option>
+                            <!-- Female options -->
+                            <option value="slim" data-gender="female">Slim</option>
+                            <option value="avg" data-gender="female">Average</option>
+                            <option value="curvy" data-gender="female">Curvy</option>
+                            <option value="heavy" data-gender="female">Heavy</option>
+                        </select>
                     </div>
                 </div>
 
-                <button type="submit" class="submit-btn" id="submitBtn">Calculate Measurements</button>
+                <!-- STEP 3: Activity & Muscle -->
+                <div class="form-step" data-step="3">
+                    <h3 class="step-title">💪 Activity & Muscle</h3>
+                    
+                    <div class="form-group">
+                        <label for="activityLevel">Activity Level *</label>
+                        <select name="activity_level" id="activityLevel" class="form-control" required>
+                            <option value="">Select Activity Level</option>
+                            <option value="sedentary">Sedentary (Little to no exercise)</option>
+                            <option value="light">Light (1-3 days/week)</option>
+                            <option value="moderate">Moderate (3-5 days/week)</option>
+                            <option value="active">Active (6-7 days/week)</option>
+                            <option value="very_active">Very Active (Athlete/Physical job)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="muscleLevel">Muscle Level *</label>
+                        <select name="muscle_level" id="muscleLevel" class="form-control" required>
+                            <option value="">Select Muscle Level</option>
+                            <option value="low">Low (Minimal muscle definition)</option>
+                            <option value="moderate">Moderate (Some visible muscle)</option>
+                            <option value="high">High (Well-defined muscles)</option>
+                            <option value="very_high">Very High (Bodybuilder level)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- STEP 4: Fit & Goal -->
+                <div class="form-step" data-step="4">
+                    <h3 class="step-title">🎯 Fit & Goal</h3>
+                    
+                    <div class="form-group">
+                        <label for="measurementGoal">Measurement Goal *</label>
+                        <select name="measurement_goal" id="measurementGoal" class="form-control" required>
+                            <option value="">Select Goal</option>
+                            <option value="clothing">Clothing/Tailoring</option>
+                            <option value="fitness">Fitness Tracking</option>
+                            <option value="health">Health Monitoring</option>
+                            <option value="general">General Reference</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="fitPreference">Fit Preference *</label>
+                        <select name="fit_preference" id="fitPreference" class="form-control" required>
+                            <option value="">Select Fit Preference</option>
+                            <option value="tight">Tight/Fitted</option>
+                            <option value="regular">Regular/Standard</option>
+                            <option value="loose">Loose/Relaxed</option>
+                            <option value="oversized">Oversized</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- STEP 5: Structure -->
+                <div class="form-step" data-step="5">
+                    <h3 class="step-title">🏋️ Body Structure</h3>
+                    
+                    <div class="form-group">
+                        <label for="shoulderType">Shoulder Type *</label>
+                        <select name="shoulder_type" id="shoulderType" class="form-control" required>
+                            <option value="">Select Shoulder Type</option>
+                            <option value="narrow">Narrow</option>
+                            <option value="average">Average</option>
+                            <option value="broad">Broad</option>
+                            <option value="very_broad">Very Broad</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- STEP 6: Image Upload -->
+                <div class="form-step" data-step="6">
+                    <h3 class="step-title">📸 Upload Images</h3>
+                    
+                    <div class="upload-section">
+                        <div class="upload-box" id="frontUpload">
+                            <input type="file" id="frontImage" name="front_image" accept="image/*" required>
+                            <img src="{{ url_for('static', filename='front_icon.png') }}" alt="Front View" class="upload-icon-img">
+                            <div><strong>Front View</strong><br>Click to upload</div>
+                            <div class="file-name" id="frontFileName"></div>
+                            <img class="preview-image" id="frontPreview">
+                        </div>
+
+                        <div class="upload-box" id="sideUpload">
+                            <input type="file" id="sideImage" name="side_image" accept="image/*" required>
+                            <img src="{{ url_for('static', filename='side_icon.png') }}" alt="Side View" class="upload-icon-img">
+                            <div><strong>Side View</strong><br>Click to upload</div>
+                            <div class="file-name" id="sideFileName"></div>
+                            <img class="preview-image" id="sidePreview">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation Buttons -->
+                <div class="form-navigation">
+                    <button type="button" class="nav-btn prev-btn" id="prevBtn" style="display: none;">
+                        ← Previous
+                    </button>
+                    <button type="button" class="nav-btn next-btn" id="nextBtn">
+                        Next →
+                    </button>
+                    <button type="submit" class="submit-btn" id="submitBtn" style="display: none;">
+                        Calculate Measurements
+                    </button>
+                </div>
+
             </form>
 
+            <!-- Loading, Error, Results remain the same -->
             <div class="loading" id="loading">
                 <div id="spinner3d" class="spinner-3d"></div>
                 <p class="loading-text">
@@ -107,10 +259,9 @@
             <div class="error" id="error"></div>
 
             <div class="results" id="results">
-                <h2>Your Body Measurements</h2>
-                
-                <div class="measurement-grid">
-                    <!-- BMI Card -->
+                <h2 class="results-title">📏 Your Body Measurements</h2>
+                <div class="measurement-grid"></div>
+                <!-- BMI Card -->
                     <div class="result-card bmi-card">
                         <div class="result-label">📊 BMI</div>
                         <div class="result-value" id="bmiValue">-</div>

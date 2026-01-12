@@ -1,12 +1,323 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     /* ===============================
+       Multi-Step Form State
+    =============================== */
+    let currentStep = 1;
+    const totalSteps = 6;
+    
+    const startContainer = document.getElementById('startContainer');
+    const formContainer = document.getElementById('formContainer');
+    const startBtn = document.getElementById('startMeasurementBtn');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressFill = document.getElementById('progressFill');
+    const currentStepSpan = document.getElementById('currentStep');
+
+    // Store calculated values
+    let calculatedBMI = null;
+    let userAge = null;
+
+    /* ===============================
+       Helper Functions
+    =============================== */
+    function getAgeGroup(age) {
+        if (age < 18) return 'teen';
+        if (age >= 18 && age < 45) return 'adult';
+        if (age >= 45 && age < 65) return 'middle_age';
+        return 'senior';
+    }
+
+    /* ===============================
+       BMI Calculation
+    =============================== */
+    function calculateBMI() {
+        const height = parseFloat(document.getElementById('heightInput').value);
+        const heightUnit = document.getElementById('heightUnit').value;
+        const weight = parseFloat(document.getElementById('weightInput').value);
+        const weightUnit = document.getElementById('weightUnit').value;
+
+        if (!height || !weight) return null;
+
+        // Convert to metric (cm and kg)
+        let heightInCm = height;
+        let weightInKg = weight;
+
+        if (heightUnit === 'm') {
+            heightInCm = height * 100;
+        }
+        if (weightUnit === 'lbs') {
+            weightInKg = weight * 0.453592;
+        }
+
+        // Calculate BMI
+        const heightInMeters = heightInCm / 100;
+        const bmi = weightInKg / (heightInMeters * heightInMeters);
+        
+        return parseFloat(bmi.toFixed(1));
+    }
+
+    function getBMICategoryFromValue(bmi) {
+        if (bmi < 18.5) return 'underweight';
+        if (bmi < 25) return 'normal';
+        if (bmi < 30) return 'overweight';
+        return 'obese';
+    }
+
+    /* ===============================
+       Step Visibility Logic
+    =============================== */
+    function shouldShowStep(stepNumber) {
+        // Step 1 (Basic Info) - Always visible
+        if (stepNumber === 1) return true;
+
+        // Step 2 (Fat Distribution, Body Type) - BMI ≥ normal (18.5)
+        if (stepNumber === 2) {
+            return calculatedBMI !== null && calculatedBMI >= 18.5;
+        }
+
+        // Step 3 (Activity Level, Muscle Level) - BMI ≥ normal
+        if (stepNumber === 3) {
+            return calculatedBMI !== null && calculatedBMI >= 18.5;
+        }
+
+        // Step 4 (Fit & Goal) - Always visible
+        if (stepNumber === 4) return true;
+
+        // Step 5 (Shoulder Type) - age ≥ 18 AND BMI ≠ underweight
+        if (stepNumber === 5) {
+            return userAge !== null && 
+                   userAge >= 18 && 
+                   calculatedBMI !== null && 
+                   calculatedBMI >= 18.5;
+        }
+
+        // Step 6 (Image Upload) - Always visible (last)
+        if (stepNumber === 6) return true;
+
+        return true;
+    }
+
+    function updateStepVisibility() {
+        // Recalculate BMI and get age
+        calculatedBMI = calculateBMI();
+        userAge = parseInt(document.getElementById('age').value) || null;
+
+        // Update visibility for each step
+        for (let i = 1; i <= 6; i++) {
+            const stepEl = document.querySelector(`.form-step[data-step="${i}"]`);
+            if (stepEl) {
+                const shouldShow = shouldShowStep(i);
+                if (shouldShow) {
+                    stepEl.removeAttribute('data-hidden');
+                    // Restore required attributes
+                    const inputs = stepEl.querySelectorAll('[data-required="true"]');
+                    inputs.forEach(input => {
+                        input.setAttribute('required', 'required');
+                    });
+                } else {
+                    stepEl.setAttribute('data-hidden', 'true');
+                    // Remove required validation from hidden steps
+                    const inputs = stepEl.querySelectorAll('input[required], select[required]');
+                    inputs.forEach(input => {
+                        input.setAttribute('data-required', 'true');
+                        input.removeAttribute('required');
+                    });
+                }
+            }
+        }
+    }
+
+    function getVisibleSteps() {
+        const visible = [];
+        for (let i = 1; i <= 6; i++) {
+            if (shouldShowStep(i)) {
+                visible.push(i);
+            }
+        }
+        return visible;
+    }
+
+    function getNextVisibleStep(fromStep) {
+        for (let i = fromStep + 1; i <= 6; i++) {
+            if (shouldShowStep(i)) return i;
+        }
+        return fromStep;
+    }
+
+    function getPreviousVisibleStep(fromStep) {
+        for (let i = fromStep - 1; i >= 1; i--) {
+            if (shouldShowStep(i)) return i;
+        }
+        return fromStep;
+    }
+
+    /* ===============================
+       Watch for BMI/Age Changes on Step 1
+    =============================== */
+    const heightInput = document.getElementById('heightInput');
+    const heightUnit = document.getElementById('heightUnit');
+    const weightInput = document.getElementById('weightInput');
+    const weightUnit = document.getElementById('weightUnit');
+    const ageInput = document.getElementById('age');
+
+    function handleStep1Change() {
+        updateStepVisibility();
+        
+        // Get age group for backend
+        const age = parseInt(document.getElementById('age').value) || null;
+        const ageGroup = age ? getAgeGroup(age) : null;
+        
+        // Store in a hidden field for backend
+        let ageGroupInput = document.getElementById('age_group_hidden');
+        if (!ageGroupInput) {
+            ageGroupInput = document.createElement('input');
+            ageGroupInput.type = 'hidden';
+            ageGroupInput.id = 'age_group_hidden';
+            ageGroupInput.name = 'age_group';
+            document.getElementById('measurementForm').appendChild(ageGroupInput);
+        }
+        ageGroupInput.value = ageGroup || '';
+        
+        console.log('BMI:', calculatedBMI, 'Age:', userAge, 'Age Group:', ageGroup, 'Visible Steps:', getVisibleSteps());
+    }
+
+    if (heightInput) heightInput.addEventListener('input', handleStep1Change);
+    if (heightUnit) heightUnit.addEventListener('change', handleStep1Change);
+    if (weightInput) weightInput.addEventListener('input', handleStep1Change);
+    if (weightUnit) weightUnit.addEventListener('change', handleStep1Change);
+    if (ageInput) ageInput.addEventListener('input', handleStep1Change);
+
+    /* ===============================
+       Start Measurement Button
+    =============================== */
+    if (startBtn) {
+        startBtn.addEventListener('click', function() {
+            startContainer.style.display = 'none';
+            formContainer.style.display = 'block';
+            updateStepVisibility(); // Initialize visibility
+            updateStepDisplay();
+        });
+    }
+
+    /* ===============================
+       Step Navigation Functions
+    =============================== */
+    function updateStepDisplay() {
+        // Update visibility first
+        updateStepVisibility();
+        
+        // Hide all steps
+        document.querySelectorAll('.form-step').forEach(step => {
+            step.classList.remove('active');
+        });
+        
+        // Show current step
+        const currentStepEl = document.querySelector(`.form-step[data-step="${currentStep}"]`);
+        if (currentStepEl) {
+            currentStepEl.classList.add('active');
+        }
+        
+        // Calculate visible steps for progress
+        const visibleSteps = getVisibleSteps();
+        const currentPosition = visibleSteps.indexOf(currentStep) + 1;
+        const totalVisible = visibleSteps.length;
+        
+        // Update progress bar
+        const progress = (currentPosition / totalVisible) * 100;
+        if (progressFill) progressFill.style.width = progress + '%';
+        if (currentStepSpan) currentStepSpan.textContent = currentPosition + ' of ' + totalVisible;
+        
+        // Update buttons
+        const isFirstVisible = currentStep === visibleSteps[0];
+        const isLastVisible = currentStep === visibleSteps[visibleSteps.length - 1];
+        
+        if (prevBtn) prevBtn.style.display = isFirstVisible ? 'none' : 'block';
+        if (nextBtn) nextBtn.style.display = isLastVisible ? 'none' : 'block';
+        if (submitBtn) submitBtn.style.display = isLastVisible ? 'block' : 'none';
+        
+        // Scroll to top of form
+        if (formContainer) {
+            formContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function validateCurrentStep() {
+        const currentStepEl = document.querySelector(`.form-step[data-step="${currentStep}"]`);
+        if (!currentStepEl) return true;
+        
+        // Skip validation if step is hidden
+        if (currentStepEl.hasAttribute('data-hidden')) return true;
+        
+        const inputs = currentStepEl.querySelectorAll('input[required], select[required]');
+        let isValid = true;
+        let missingFields = [];
+        
+        inputs.forEach(input => {
+            if (input.type === 'radio') {
+                const radioGroup = currentStepEl.querySelectorAll(`input[name="${input.name}"]`);
+                const isChecked = Array.from(radioGroup).some(radio => radio.checked);
+                if (!isChecked) {
+                    isValid = false;
+                    missingFields.push(input.name);
+                }
+            } else if (input.type === 'file') {
+                if (!input.files || input.files.length === 0) {
+                    isValid = false;
+                    missingFields.push(input.name);
+                }
+            } else if (!input.value.trim()) {
+                isValid = false;
+                missingFields.push(input.name || input.id);
+            }
+        });
+        
+        if (!isValid) {
+            alert('Please fill in all required fields before proceeding.');
+            console.log('Missing fields:', missingFields);
+        }
+        
+        return isValid;
+    }
+
+    /* ===============================
+       Next/Previous Button Handlers
+    =============================== */
+    // Next Button
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function() {
+            if (validateCurrentStep()) {
+                const nextStep = getNextVisibleStep(currentStep);
+                if (nextStep !== currentStep) {
+                    currentStep = nextStep;
+                    updateStepDisplay();
+                }
+            }
+        });
+    }
+
+    // Previous Button
+    if (prevBtn) {
+        prevBtn.addEventListener('click', function() {
+            const prevStep = getPreviousVisibleStep(currentStep);
+            if (prevStep !== currentStep) {
+                currentStep = prevStep;
+                updateStepDisplay();
+            }
+        });
+    }
+
+    /* ===============================
        Body Type Dropdown - Dynamic Filtering by Gender
     =============================== */
     const bodyTypeSelect = document.getElementById('bodyType');
     
     function updateBodyTypeOptions() {
-        const selectedGender = document.querySelector('input[name="gender"]:checked').value;
+        const genderInput = document.querySelector('input[name="gender"]:checked');
+        if (!genderInput) return;
+        
+        const selectedGender = genderInput.value;
         const options = bodyTypeSelect.querySelectorAll('option[data-gender]');
         
         // Reset selection when gender changes
@@ -39,7 +350,9 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     
     // Initialize body type options on page load
-    updateBodyTypeOptions();
+    if (bodyTypeSelect) {
+        updateBodyTypeOptions();
+    }
 
     /* ===============================
        Upload setup
@@ -143,7 +456,37 @@ document.addEventListener('DOMContentLoaded', function () {
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
 
+        // Final validation for multi-step
+        if (!validateCurrentStep()) return;
+
         const formData = new FormData(this);
+        
+        // ADD DEFAULT VALUES FOR CONDITIONALLY HIDDEN FIELDS
+        // If BMI < 18.5, these fields won't exist, so provide defaults
+        if (calculatedBMI !== null && calculatedBMI < 18.5) {
+            if (!formData.has('fat_distribution')) {
+                formData.set('fat_distribution', 'even'); // default
+            }
+            if (!formData.has('body_type')) {
+                formData.set('body_type', 'slim'); // default for underweight
+            }
+            if (!formData.has('activity_level')) {
+                formData.set('activity_level', 'light'); // default
+            }
+            if (!formData.has('muscle_level')) {
+                formData.set('muscle_level', 'low'); // default
+            }
+        }
+        
+        // If age < 18 or BMI < 18.5, shoulder_type won't exist
+        if (!formData.has('shoulder_type')) {
+            formData.set('shoulder_type', 'average'); // default
+        }
+        
+        // Ensure age_group is set
+        const age = parseInt(document.getElementById('age').value);
+        formData.set('age_group', getAgeGroup(age));
+
         const btn = document.getElementById('submitBtn');
         const loading = document.getElementById('loading');
         const results = document.getElementById('results');
@@ -199,7 +542,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     bmiCategoryEl.className = 'result-category ' + getBMICategoryClass(meta.bmi_category);
                 }
 
-                // Body Type (calculated) - FIXED ID
+                // Body Type (calculated)
                 safeUpdate('bodyTypeResult', formatBodyType(meta.body_type));
 
                 // Recommended Size
@@ -218,10 +561,6 @@ document.addEventListener('DOMContentLoaded', function () {
             // Neck Circumference
             safeUpdate('neckCircCm', m.neck?.circumference?.cm);
             safeUpdate('neckCircIn', m.neck?.circumference?.inches);
-
-            // Chest Circumference
-            safeUpdate('chestCircCm', m.chest?.circumference?.cm);
-            safeUpdate('chestCircIn', m.chest?.circumference?.inches);
 
             // Chest Circumference
             safeUpdate('chestCircCm', m.chest?.circumference?.cm);
@@ -253,10 +592,6 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('waistCircCm', m.waist?.circumference?.cm);
             safeUpdate('waistCircIn', m.waist?.circumference?.inches);
 
-            // Waist Circumference
-            safeUpdate('waistCircCm', m.waist?.circumference?.cm);
-            safeUpdate('waistCircIn', m.waist?.circumference?.inches);
-
             // Hip Circumference
             safeUpdate('hipCircCm', m.hip?.circumference?.cm);
             safeUpdate('hipCircIn', m.hip?.circumference?.inches);
@@ -269,11 +604,9 @@ document.addEventListener('DOMContentLoaded', function () {
             safeUpdate('armHandCm', m.arm?.hand_to_elbow?.cm);
             safeUpdate('armHandIn', m.arm?.hand_to_elbow?.inches);
 
-            // Shoulder width 
             safeUpdate('armShoulderCm', m.arm?.shoulder_to_elbow?.cm);
             safeUpdate('armShoulderIn', m.arm?.shoulder_to_elbow?.inches);
 
-            // Total arm length
             safeUpdate('armTotalCm', m.arm?.total_length?.cm);
             safeUpdate('armTotalIn', m.arm?.total_length?.inches);
 
@@ -312,4 +645,5 @@ document.addEventListener('DOMContentLoaded', function () {
         if (loading) loading.classList.remove('active');
         if (btn) btn.disabled = false;
     });
+
 });
