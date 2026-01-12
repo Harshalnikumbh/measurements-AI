@@ -1,6 +1,14 @@
 document.addEventListener('DOMContentLoaded', function () {
 
     /* ===============================
+       Disable HTML5 Validation
+    =============================== */
+    const form = document.getElementById('measurementForm');
+    if (form) {
+        form.setAttribute('novalidate', 'true');
+    }
+
+    /* ===============================
        Multi-Step Form State
     =============================== */
     let currentStep = 1;
@@ -111,13 +119,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 const shouldShow = shouldShowStep(i);
                 if (shouldShow) {
                     stepEl.removeAttribute('data-hidden');
+                    stepEl.style.display = ''; // Ensure it's visible
+                    
                     // Restore required attributes
                     const inputs = stepEl.querySelectorAll('[data-required="true"]');
                     inputs.forEach(input => {
                         input.setAttribute('required', 'required');
+                        input.removeAttribute('data-required');
                     });
                 } else {
                     stepEl.setAttribute('data-hidden', 'true');
+                    stepEl.style.display = 'none'; // Explicitly hide
+                    
                     // Remove required validation from hidden steps
                     const inputs = stepEl.querySelectorAll('input[required], select[required]');
                     inputs.forEach(input => {
@@ -255,6 +268,10 @@ document.addEventListener('DOMContentLoaded', function () {
         let missingFields = [];
         
         inputs.forEach(input => {
+            // Double-check the input is actually visible and part of current step
+            const isInputVisible = input.offsetParent !== null;
+            if (!isInputVisible) return; // Skip hidden inputs
+            
             if (input.type === 'radio') {
                 const radioGroup = currentStepEl.querySelectorAll(`input[name="${input.name}"]`);
                 const isChecked = Array.from(radioGroup).some(radio => radio.checked);
@@ -267,9 +284,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     isValid = false;
                     missingFields.push(input.name);
                 }
-            } else if (!input.value.trim()) {
+            } else if (!input.value || !input.value.trim()) {
                 isValid = false;
                 missingFields.push(input.name || input.id);
+                
+                // Add visual feedback
+                input.style.borderColor = '#ef4444';
+                setTimeout(() => {
+                    input.style.borderColor = '';
+                }, 3000);
             }
         });
         
@@ -449,15 +472,54 @@ document.addEventListener('DOMContentLoaded', function () {
     /* ===============================
        Form submission
     =============================== */
-    const form = document.getElementById('measurementForm');
-
     if (!form) return;
 
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
 
-        // Final validation for multi-step
-        if (!validateCurrentStep()) return;
+        // ===== COMPREHENSIVE VALIDATION FOR ALL VISIBLE STEPS =====
+        let allStepsValid = true;
+        const visibleSteps = getVisibleSteps();
+        
+        for (const stepNum of visibleSteps) {
+            const stepEl = document.querySelector(`.form-step[data-step="${stepNum}"]`);
+            if (!stepEl || stepEl.hasAttribute('data-hidden')) continue;
+            
+            const requiredInputs = stepEl.querySelectorAll('input[required], select[required]');
+            
+            for (const input of requiredInputs) {
+                // Only validate visible inputs
+                if (input.offsetParent === null) continue;
+                
+                let inputValid = true;
+                
+                if (input.type === 'radio') {
+                    const radioGroup = stepEl.querySelectorAll(`input[name="${input.name}"]`);
+                    inputValid = Array.from(radioGroup).some(radio => radio.checked);
+                } else if (input.type === 'file') {
+                    inputValid = input.files && input.files.length > 0;
+                } else {
+                    inputValid = input.value && input.value.trim() !== '';
+                }
+                
+                if (!inputValid) {
+                    allStepsValid = false;
+                    alert(`Please complete all required fields in Step ${stepNum}`);
+                    currentStep = stepNum;
+                    updateStepDisplay();
+                    
+                    // Scroll to the problematic input
+                    setTimeout(() => {
+                        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        input.focus();
+                    }, 300);
+                    
+                    return; // Stop submission
+                }
+            }
+        }
+        
+        if (!allStepsValid) return;
 
         const formData = new FormData(this);
         
@@ -468,7 +530,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 formData.set('fat_distribution', 'even'); // default
             }
             if (!formData.has('body_type')) {
-                formData.set('body_type', 'slim'); // default for underweight
+                formData.set('body_type', ''); // Let backend handle it
             }
             if (!formData.has('activity_level')) {
                 formData.set('activity_level', 'light'); // default
