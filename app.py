@@ -1263,10 +1263,10 @@ class CompleteBodyMeasurementsCalculator:
 
         if self.gender == 'male':
             # Male adjustments
-            if 55 <= self.weight <= 65:
+            if 55 <= self.weight <= 64:
                 return chest_circumference + 2.5
             elif 65 <= self.weight <= 70:
-                return chest_circumference + 4.5
+                return chest_circumference + 7.5 # 7.5
             elif 70 < self.weight <= 75:
                 return chest_circumference + 5.5
             elif 75 < self.weight <= 90:
@@ -1291,12 +1291,13 @@ class CompleteBodyMeasurementsCalculator:
         # ADJUSTED BY RAW CHEST ONLY ) (FEMALES)
         elif self.gender == 'female':
 
+
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
             elif 85 < chest_circumference <= 90:
                 return chest_circumference - 5
             elif 80 < chest_circumference <= 85:
-                return chest_circumference - 3
+                return chest_circumference + 4
             else:
                 return chest_circumference
         
@@ -1309,8 +1310,10 @@ class CompleteBodyMeasurementsCalculator:
 
         if 25 <= self.weight < 40:
             return waist_circumference - 12
-        elif 40 <= self.weight < 50:
-            return waist_circumference - 10
+        elif 40 <= self.weight < 44:
+            return waist_circumference + 10
+        elif 45 <= self.weight < 50:
+            return waist_circumference - 9
         elif 50 <= self.weight < 60:
             return waist_circumference - 8
         elif 60 <= self.weight <= 65:
@@ -1324,35 +1327,65 @@ class CompleteBodyMeasurementsCalculator:
 
         if self.gender != 'male':
             return waist_circumference
-
-        if 80 <= self.weight < 90:
+        elif 55 <= self.weight < 66 and self.height <= 160:
+            return waist_circumference - 12 # 10 
+        elif 55 <= self.weight < 65:
+            return waist_circumference - 6 
+        elif 80 <= self.weight < 90:
             return waist_circumference - 8
-        
         else:
             return waist_circumference
 
-    # Adjust hip for males only
+    # Adjust hip for males and females only
     def adjust_hips_weight(self, hip_circumference):
         logger.debug("Adjusting hip circumference based on weight (legacy method).")
         """Adjust hip circumference based on weight (male only) - legacy method."""
 
         if self.gender == 'male':
-            if 55 <= self.weight <= 65:
+            if 55 <= self.weight <= 6:
                 return hip_circumference + 2.0
             elif 65 <= self.weight <= 75:
-                return hip_circumference + 3.0
+                return hip_circumference - 13 # 15 
             elif 75 < self.weight <= 85:
                 return hip_circumference + 4.0
             elif 85 < self.weight <= 95:
                 return hip_circumference + 7
             else:
                 return hip_circumference
+        return hip_circumference
+    
+    def adjust_neck_by_weight(self, neck_circumference):
+        logger.debug("Adjusting neck circumference based on weight (legacy method).")
+        """Adjust neck circumference based on weight"""
+
+        if self.gender == 'female':
+            if 40 <= self.weight <= 44:
+                return neck_circumference - 7.0
+            else:
+                return neck_circumference
+        if self.gender == 'male':
+            if 60 < self.weight <= 70:
+                return neck_circumference - 4
+            else:
+                return neck_circumference
+        return neck_circumference
+    
             
     def adjust_armhole_by_weight(self, armhole_circumference):
-        logger.debug("Adjusting armhole circumference based on weight (legacy method).")
-        """Adjust armhole circumference based on weight"""
-
+        logger.debug("Adjusting armhole circumference based on weight.")
+        """Adjust armhole circumference based on weight with fallback for females"""
+    
+    # Default female armhole: 7 inches depth → circumference
+        DEFAULT_FEMALE_ARMHOLE_CM = 17.78  # 7 inches * 2.54
+        DEFAULT_MALE_ARMHOLE_CM = 16.51    # 6.5 inches * 2.54
+        
+    # Handle None input
+        if armhole_circumference is None:
+            logger.warning("Armhole circumference is None, using default")
+            return DEFAULT_FEMALE_ARMHOLE_CM if self.gender == 'female' else DEFAULT_MALE_ARMHOLE_CM
+        
         if self.gender == 'male':
+            # Male adjustments (existing logic)
             if 55 <= self.weight <= 65:
                 return armhole_circumference + 2.0
             elif 67 <= self.weight <= 75:
@@ -1363,6 +1396,7 @@ class CompleteBodyMeasurementsCalculator:
                 return armhole_circumference + 7.5
             else:
                 return armhole_circumference
+        return armhole_circumference
     def adjust_upper_thigh_by_weight(self, upper_thigh_circumference):
         logger.debug("Adjusting upper thigh circumference based on weight (legacy method).")
         """Adjust upper thigh circumference based on weight"""
@@ -1371,6 +1405,13 @@ class CompleteBodyMeasurementsCalculator:
                 return upper_thigh_circumference + 10
             else:
                 return upper_thigh_circumference
+        if self.gender == 'female':
+            if 40 <= self.weight <= 44:
+                return upper_thigh_circumference - 2
+            else:
+                return upper_thigh_circumference
+            
+        return upper_thigh_circumference
             
     def adjust_knee_by_weight(self, knee_circumference):
         if self.gender == 'male':
@@ -1378,6 +1419,13 @@ class CompleteBodyMeasurementsCalculator:
                 return knee_circumference + 2
             else:
                 return knee_circumference
+        if self.gender == 'female':
+            if 40 <= self.weight <= 44:
+                return knee_circumference - 2
+            else:
+                return knee_circumference
+        return knee_circumference
+    
 
     def estimate_shoulder_width(self, mesh, real_height):
         logger.debug("Estimating shoulder width.")
@@ -1402,14 +1450,24 @@ class CompleteBodyMeasurementsCalculator:
         
         return abs(x_max - x_min) * scale
     
-    def compute_arm_sections(self, total_arm_length):
-        logger.debug("Computing arm sections.")
-        """Estimates arm sections based on proportional breakdown."""
-        hand_to_elbow = total_arm_length / 2
-        shoulder_to_elbow = total_arm_length * 0.58
-        return hand_to_elbow, shoulder_to_elbow
+    def compute_arm_sections(self):
+        if self.gender == 'male':
+            ratio = 0.36   # anatomical / full arm
+        else:
+            # FEMALE – tailoring sleeve length
+            if self.height < 150:
+                ratio = 0.25
+            elif 150 <= self.height <= 155:
+                ratio = 0.26
+            elif self.height <= 165:
+                ratio = 0.27
+            else:
+                ratio = 0.28
+
+        total = self.height * ratio
+        return total, total * 0.50, total * 0.58
     
-    def calculate_all_measurements(self, front_obj, side_obj):
+    def calculate_all_measurements(self, front_obj, side_obj):  
         logger.debug("Calculating all measurements with corrections.")
         """Main method to calculate all measurements with BMI and body type corrections."""
         front_mesh = self.load_obj_file(front_obj, is_side_view=False)
@@ -1476,6 +1534,11 @@ class CompleteBodyMeasurementsCalculator:
                 results[name] = {
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
                 }
+            if name == 'neck':
+                c = self.adjust_neck_by_weight(c)
+                results[name] = {
+                    'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
+                }
     
         # Calculate Upper Chest and Lower Chest (females only)
         if self.gender == 'female':
@@ -1532,7 +1595,13 @@ class CompleteBodyMeasurementsCalculator:
         logger.debug(f"Calculating armhole circumference: {armhole_cm} cm.")
 
         results['armhole'] = {
-            'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
+            # Before code 
+            # 'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
+            'circumference': {
+            # After code ->  None type handling
+            'cm': round(armhole_cm, 2) if armhole_cm is not None else None,
+            'inches': round(armhole_cm * cm_to_in, 2) if armhole_cm is not None else None
+}
         }
 
         # Calculate Upper Thigh Circumference 
@@ -1557,12 +1626,25 @@ class CompleteBodyMeasurementsCalculator:
 
         # Calculate body length
         if self.gender == 'male':
-            body_length_cm = self.height * 0.28
+            body_ratio = 0.28   # anatomical / men’s shirt length
         else:
-            body_length_cm = self.height * 0.27
+            if self.height < 150:
+                body_ratio = 0.22
+            elif 150 <= self.height <= 155:
+                body_ratio = 0.225
+            elif self.height <= 165:
+                body_ratio = 0.235
+            else:
+                body_ratio = 0.245
+
+        body_length_cm = self.height * body_ratio 
+
         results['body_length'] = {
-            'length': {'cm': round(body_length_cm, 2), 'inches': round(body_length_cm * cm_to_in, 2)}
-        }
+            'length': {
+                'cm': round(body_length_cm, 2),
+                'inches': round(body_length_cm * cm_to_in, 2)
+            }
+        }       
 
         # Calculate recommended clothing size
         chest_cm = results['chest']['circumference']['cm']
@@ -1592,8 +1674,8 @@ class CompleteBodyMeasurementsCalculator:
                             )
         
         # Arm sections
-        total_arm = 0.36 * self.height
-        hand, shoulder = self.compute_arm_sections(total_arm)
+        # total_arm = 0.36 * self.height
+        total_arm, hand, shoulder = self.compute_arm_sections()
         display_arm = total_arm + 4
         
         results['arm'] = {
