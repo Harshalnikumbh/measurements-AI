@@ -1266,7 +1266,7 @@ class CompleteBodyMeasurementsCalculator:
             if 55 <= self.weight <= 64:
                 return chest_circumference + 2.5
             elif 65 <= self.weight <= 70:
-                return chest_circumference + 7.5 # 7.5
+                return chest_circumference + 3.5 # 7.5
             elif 70 < self.weight <= 75:
                 return chest_circumference + 5.5
             elif 75 < self.weight <= 90:
@@ -1290,8 +1290,6 @@ class CompleteBodyMeasurementsCalculator:
 
         # ADJUSTED BY RAW CHEST ONLY ) (FEMALES)
         elif self.gender == 'female':
-
-
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
             elif 85 < chest_circumference <= 90:
@@ -1308,10 +1306,10 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender != 'female':
             return waist_circumference
 
-        if 25 <= self.weight < 40:
-            return waist_circumference - 12
-        elif 40 <= self.weight < 44:
-            return waist_circumference + 10
+        if 25 <= self.weight <= 45 and self.height < 160:
+            return waist_circumference - 2
+        # elif 40 <= self.weight < 44.8:
+        #     return waist_circumference - 4 
         elif 45 <= self.weight < 50:
             return waist_circumference - 9
         elif 50 <= self.weight < 60:
@@ -1328,7 +1326,7 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender != 'male':
             return waist_circumference
         elif 55 <= self.weight < 66 and self.height <= 160:
-            return waist_circumference - 12 # 10 
+            return waist_circumference - 13 # 10 
         elif 55 <= self.weight < 65:
             return waist_circumference - 6 
         elif 80 <= self.weight < 90:
@@ -1342,10 +1340,14 @@ class CompleteBodyMeasurementsCalculator:
         """Adjust hip circumference based on weight (male only) - legacy method."""
 
         if self.gender == 'male':
-            if 55 <= self.weight <= 6:
+            if 65 <= self.weight <= 75 and self.height <= 160:
+                return hip_circumference - 12 # 15 
+            elif 55 <= self.weight <= 64:
                 return hip_circumference + 2.0
-            elif 65 <= self.weight <= 75:
-                return hip_circumference - 13 # 15 
+            elif 65 <= self.weight <= 70:
+                return hip_circumference + 3.5 # 7.5
+            elif 70 < self.weight <= 75:
+                return hip_circumference + 5.5 
             elif 75 < self.weight <= 85:
                 return hip_circumference + 4.0
             elif 85 < self.weight <= 95:
@@ -1359,8 +1361,8 @@ class CompleteBodyMeasurementsCalculator:
         """Adjust neck circumference based on weight"""
 
         if self.gender == 'female':
-            if 40 <= self.weight <= 44:
-                return neck_circumference - 7.0
+            if 40 <= self.weight <= 44.8:
+                return neck_circumference - 9.0 # 7.0
             else:
                 return neck_circumference
         if self.gender == 'male':
@@ -1406,7 +1408,7 @@ class CompleteBodyMeasurementsCalculator:
             else:
                 return upper_thigh_circumference
         if self.gender == 'female':
-            if 40 <= self.weight <= 44:
+            if 40 <= self.weight <= 44.8:
                 return upper_thigh_circumference - 2
             else:
                 return upper_thigh_circumference
@@ -1415,40 +1417,67 @@ class CompleteBodyMeasurementsCalculator:
             
     def adjust_knee_by_weight(self, knee_circumference):
         if self.gender == 'male':
-            if 85 < self.weight <= 95:
+            if 55 <= self.weight <= 65:
+                return knee_circumference + 5.0
+            elif 85 < self.weight <= 95:
                 return knee_circumference + 2
             else:
                 return knee_circumference
         if self.gender == 'female':
-            if 40 <= self.weight <= 44:
-                return knee_circumference - 2
+            if 40 <= self.weight <= 44.8:
+                return knee_circumference - 4
             else:
                 return knee_circumference
         return knee_circumference
     
 
     def estimate_shoulder_width(self, mesh, real_height):
-        logger.debug("Estimating shoulder width.")
-        """Estimates shoulder width."""
         vertices = mesh.vertices
         y = vertices[:, 1]
         Ymin, Ymax = np.min(y), np.max(y)
         H = Ymax - Ymin
-        
+
         if H == 0:
             return 0.0
-        
+
         scale = real_height / H
-        mask = (y >= Ymin + H*0.79) & (y <= Ymin + H*0.95)
+
+        # FEMALE SLICE
+        if self.gender == 'female':
+            lower = Ymin + H * 0.82
+            upper = Ymin + H * 0.92
+        else:
+            lower = Ymin + H * 0.79
+            upper = Ymin + H * 0.95
+
+        mask = (y >= lower) & (y <= upper)
         slice_vertices = vertices[mask]
-        
+
         if len(slice_vertices) == 0:
             return 0.0
-        
-        x_min = np.min(slice_vertices[:, 0])
-        x_max = np.max(slice_vertices[:, 0])
-        
-        return abs(x_max - x_min) * scale
+
+        x_vals = slice_vertices[:, 0]
+
+        # FEMALE: remove arm outliers
+        if self.gender == 'female':
+            mean_x = np.mean(x_vals)
+            std_x = np.std(x_vals)
+            x_vals = x_vals[np.abs(x_vals - mean_x) < 1.5 * std_x]
+
+        if len(x_vals) == 0:
+            return 0.0
+
+        width_cm = abs(np.max(x_vals) - np.min(x_vals)) * scale
+
+        # FEMALE clavicle correction
+        if self.gender == 'female':
+            width_cm *= 0.93
+
+            # HARD FLOOR FOR PETITE FEMALES
+            if real_height <= 152:
+                width_cm = max(width_cm, 34.29)  
+
+        return round(width_cm, 2)
     
     def compute_arm_sections(self):
         if self.gender == 'male':
@@ -1546,7 +1575,7 @@ class CompleteBodyMeasurementsCalculator:
             full_chest_cm = results['chest']['circumference']['cm']
 
             #Upper and lower chest as percentages of full chest
-            upper_chest_cm = full_chest_cm * 0.90
+            upper_chest_cm = full_chest_cm * 0.92 # 0.90
             lower_chest_cm = full_chest_cm * 0.81
 
             results['upper_chest'] = {
