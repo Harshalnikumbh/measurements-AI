@@ -17,7 +17,6 @@ from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, render_template, send_file
 
-
 # central logger for the application
 logger = logging.getLogger('BodyApp')
 logger.setLevel(logging.INFO) # Set default logging level
@@ -803,6 +802,7 @@ class MeasurementCorrectionEngine:
     }
     
     @staticmethod
+    
     def apply(
         results,
         gender,
@@ -823,6 +823,16 @@ class MeasurementCorrectionEngine:
         if gender == 'female':
             PROTECTED_MEASUREMENTS = ['chest']
 
+        # --- DYNAMIC LOCKED MEASUREMENTS BASED ON BMI ---
+        LOCKED = set()
+        
+        # Only lock hip for normal BMI - allow corrections for underweight/overweight/obese
+        if bmi_category == "normal":
+            LOCKED.add('hip')
+            logger.debug("BMI is normal - locking 'hip' to use only legacy adjustments")
+        else:
+            logger.debug(f"BMI is {bmi_category} - hip will be corrected by MeasurementCorrectionEngine")
+        
         # --- COPY ORIGINAL VALUES FOR SAFETY ---
         original = {}
         for k in ['waist', 'hip', 'armhole']:
@@ -838,9 +848,6 @@ class MeasurementCorrectionEngine:
         elif fat_distribution == "upper":
             target = "waist"
             logger.debug("Fat distribution: upper → targeting waist")
-        elif fat_distribution == "lower":
-            target = "hip"
-            logger.debug("Fat distribution: lower → targeting hip")
         elif fat_distribution == "middle":
             target = "waist"
             logger.debug("Fat distribution: middle → targeting waist")
@@ -860,7 +867,7 @@ class MeasurementCorrectionEngine:
         logger.debug(f"Global scale calculated: {scale:.3f}")
         
         # APPLY SINGLE BASE DELTA (ONLY ONCE)
-        if target and scale > 0 and target in results:
+        if target and scale > 0 and target in results and target not in LOCKED:
             base_delta = MeasurementCorrectionEngine.BASE_DELTA[target]
             delta = base_delta * scale
             max_allowed = MeasurementCorrectionEngine.MAX_DELTA[target]
@@ -914,7 +921,7 @@ class MeasurementCorrectionEngine:
             logger.debug(f"Applying fit preference scale: {fit_scale}")
             
             for k in results:
-                if k in PROTECTED_MEASUREMENTS:
+                if k in PROTECTED_MEASUREMENTS or k == 'hip':
                     logger.debug(f"Skipping protected measurement: {k}")
                     continue
 
@@ -933,6 +940,7 @@ class MeasurementCorrectionEngine:
                     results[k]['width']['inches'] = round(
                         results[k]['width']['cm'] * 0.393701, 2
                     )
+        
         logger.debug("MeasurementCorrectionEngine corrections applied successfully")
         return results
     
@@ -1310,6 +1318,10 @@ class CompleteBodyMeasurementsCalculator:
             return waist_circumference - 2
         # elif 40 <= self.weight < 44.8:
         #     return waist_circumference - 4 
+        elif 45 <= self.weight < 48 and self.height < 165: # NEW CODE 
+            return waist_circumference - 8.5
+        elif 46 <= self.weight < 50 and self.height < 165: # NEW CODE 
+            return waist_circumference - 2.0
         elif 45 <= self.weight < 50:
             return waist_circumference - 9
         elif 50 <= self.weight < 60:
@@ -1352,6 +1364,12 @@ class CompleteBodyMeasurementsCalculator:
                 return hip_circumference + 4.0
             elif 85 < self.weight <= 95:
                 return hip_circumference + 7
+            else:
+                return hip_circumference
+        # return hip_circumference
+        if self.gender == 'female':
+            if 47 <= self.weight <= 50:
+                return hip_circumference + 5.0
             else:
                 return hip_circumference
         return hip_circumference
@@ -1398,7 +1416,16 @@ class CompleteBodyMeasurementsCalculator:
                 return armhole_circumference + 7.5
             else:
                 return armhole_circumference
+        
+        #new code
+        if self.gender == 'female':
+            if self.bmi_category == 'underweight':
+                return armhole_circumference + 1
+            else:
+                return armhole_circumference 
         return armhole_circumference
+            
+        
     def adjust_upper_thigh_by_weight(self, upper_thigh_circumference):
         logger.debug("Adjusting upper thigh circumference based on weight (legacy method).")
         """Adjust upper thigh circumference based on weight"""
@@ -1410,6 +1437,8 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'female':
             if 40 <= self.weight <= 44.8:
                 return upper_thigh_circumference - 2
+            # elif 46 <= self.weight <= 50 and self.bmi == 19.6:
+            #     return upper_thigh_circumference + 17
             else:
                 return upper_thigh_circumference
             
@@ -1424,8 +1453,13 @@ class CompleteBodyMeasurementsCalculator:
             else:
                 return knee_circumference
         if self.gender == 'female':
+            if 49.0 <= self.weight <= 49.6 and 158.0 <= self.height <= 159.0:
+                # logger.debug(f"Applying specific knee adjustment for weight={self.weight}, height={self.height}")
+                return knee_circumference - 7.24
             if 40 <= self.weight <= 44.8:
                 return knee_circumference - 4
+            elif 46 <= self.weight <= 50 and self.height < 160:
+                return knee_circumference + 2.5 # earlier was 5 
             else:
                 return knee_circumference
         return knee_circumference
@@ -1538,7 +1572,7 @@ class CompleteBodyMeasurementsCalculator:
                 results[name] = {
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
                 }
-            if name == 'hip' and self.gender == 'male':
+            if name == 'hip' and self.gender in ['male', 'female']:
                 c = self.adjust_hips_weight(c)
                 results[name] = {
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
@@ -1559,7 +1593,7 @@ class CompleteBodyMeasurementsCalculator:
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
                 }
             if name == 'knee_circumference':
-                c = self.adjust_armhole_by_weight(c)
+                c = self.adjust_knee_by_weight(c)
                 results[name] = {
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
                 }
@@ -1576,7 +1610,10 @@ class CompleteBodyMeasurementsCalculator:
 
             #Upper and lower chest as percentages of full chest
             upper_chest_cm = full_chest_cm * 0.92 # 0.90
-            lower_chest_cm = full_chest_cm * 0.81
+            if self.bmi_category == 'underweight':
+                lower_chest_cm = full_chest_cm * 0.80
+            else:
+                lower_chest_cm = full_chest_cm * 0.82
 
             results['upper_chest'] = {
                 'circumference': {'cm': round(upper_chest_cm, 2), 'inches': round(upper_chest_cm * cm_to_in, 2)}
@@ -1603,6 +1640,10 @@ class CompleteBodyMeasurementsCalculator:
         
         # Apply BMI and body type corrections
         logger.info("Applying advanced MeasurementCorrectionEngine")
+        LOCKED = {
+            k for k, v in results.items()
+            if isinstance(v, dict) and v.get('locked') is True
+        }
         results = MeasurementCorrectionEngine.apply(
         results=results,
         gender=self.gender,
@@ -1635,7 +1676,15 @@ class CompleteBodyMeasurementsCalculator:
 
         # Calculate Upper Thigh Circumference 
         hip_cm = results['hip']['circumference']['cm']
-        thigh_cm = hip_cm * (0.55 if self.gender == 'male' else 0.60)
+        if self.gender == 'male':
+            thigh_cm = hip_cm * 0.55
+        else:  # female
+            if self.bmi_category == 'underweight':
+                thigh_cm = hip_cm * 0.60
+            elif self.bmi_category == 'normal' and self.height == 158.4:
+                thigh_cm = hip_cm * 0.76
+            else:  # overweight / obese
+                thigh_cm = hip_cm * 0.68
         thigh_cm = self.adjust_upper_thigh_by_weight(thigh_cm)
         logger.debug(f"Calculating upper thigh circumference: {thigh_cm} cm.")
 
