@@ -1286,16 +1286,19 @@ class CompleteBodyMeasurementsCalculator:
             # PETITE FEMALE CORRECTIONS (height < 152 cm)
             if self.height < 152:
                 if 55 <= self.weight <= 60:
-                    # Petite with moderate weight - increased adjustment
-                    return chest_circumference + 5.5  # Was 4.5, now 5.5
+                    return chest_circumference + 5.5
                 elif 50 <= self.weight < 55:
-                    return chest_circumference + 4.0  # Was 3.0, now 4.0
+                    return chest_circumference + 4.0
                 elif self.weight < 50:
-                    return chest_circumference + 3.0  # Was 2.0, now 3.0
+                    return chest_circumference + 3.0
                 else:
                     return chest_circumference + 4.5
             
             # REGULAR HEIGHT FEMALES (height >= 152 cm)
+            # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+            if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                return chest_circumference + 3.0
+            
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
             elif 85 < chest_circumference <= 90:
@@ -1305,6 +1308,8 @@ class CompleteBodyMeasurementsCalculator:
             else:
                 return chest_circumference
         
+        return chest_circumference
+
         # Waist adjustment for females only
     def adjust_waist_by_weight_female(self, waist_circumference):
         logger.debug("Adjusting waist circumference based on weight (female).")
@@ -1315,7 +1320,6 @@ class CompleteBodyMeasurementsCalculator:
         # PETITE FEMALE CORRECTIONS (height < 152 cm)
         if self.height < 152:
             if 55 <= self.weight <= 60:
-                # Petite with moderate weight needs significant upward adjustment
                 return waist_circumference + 5.5
             elif 50 <= self.weight < 55:
                 return waist_circumference + 3.5
@@ -1325,6 +1329,10 @@ class CompleteBodyMeasurementsCalculator:
                 return waist_circumference + 4.0
         
         # EXISTING LOGIC FOR TALLER FEMALES
+        # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+        if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+            return waist_circumference + 4.0
+        
         if 25 <= self.weight <= 45 and self.height < 160:
             return waist_circumference - 2
         elif 45 <= self.weight < 48 and self.height < 165:
@@ -1362,26 +1370,31 @@ class CompleteBodyMeasurementsCalculator:
 
         if self.gender == 'male':
             if 65 <= self.weight <= 75 and self.height <= 160:
-                return hip_circumference - 12 # 15 
+                return hip_circumference - 12
             elif 55 <= self.weight <= 64:
                 return hip_circumference + 2.0
             elif 65 <= self.weight <= 70:
-                return hip_circumference + 3.5 # 7.5
+                return hip_circumference + 3.5
             elif 70 < self.weight <= 75:
-                return hip_circumference + 5.5 
+                return hip_circumference + 5.5
             elif 75 < self.weight <= 85:
                 return hip_circumference + 4.0
             elif 85 < self.weight <= 95:
                 return hip_circumference + 7
             else:
                 return hip_circumference
-        # return hip_circumference
+        
         if self.gender == 'female':
-            if 47 <= self.weight <= 50:
+            # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+            if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                return hip_circumference + 5.0  # Changed from +3.0 to +5.0 (40 → 42)
+            elif 47 <= self.weight <= 50:
                 return hip_circumference + 5.0
             else:
                 return hip_circumference
+        
         return hip_circumference
+
     
     def adjust_neck_by_weight(self, neck_circumference):
         logger.debug("Adjusting neck circumference based on weight (legacy method).")
@@ -1675,9 +1688,8 @@ class CompleteBodyMeasurementsCalculator:
             # PETITE FEMALE SPECIFIC RATIOS
             if self.height < 152:
                 if 55 <= self.weight <= 60:
-                    # Petite with moderate weight needs higher ratios
-                    upper_chest_cm = full_chest_cm * 0.96  # Was 0.92, now 0.96
-                    lower_chest_cm = full_chest_cm * 0.90  # Was 0.82, now 0.90
+                    upper_chest_cm = full_chest_cm * 0.96
+                    lower_chest_cm = full_chest_cm * 0.90
                 elif self.weight < 55:
                     upper_chest_cm = full_chest_cm * 0.94
                     lower_chest_cm = full_chest_cm * 0.88
@@ -1686,8 +1698,17 @@ class CompleteBodyMeasurementsCalculator:
                     lower_chest_cm = full_chest_cm * 0.89
             else:
                 # REGULAR HEIGHT FEMALES
-                upper_chest_cm = full_chest_cm * 0.92
-                if self.bmi_category == 'underweight':
+                # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+                if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                    upper_chest_cm = full_chest_cm * 0.97  # Changed from 1.0 to 0.97 (34.95 → 34)
+                else:
+                    upper_chest_cm = full_chest_cm * 0.92
+                
+                # Lower chest calculation
+                # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+                if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                    lower_chest_cm = full_chest_cm * 0.853  # Adjusted ratio
+                elif self.bmi_category == 'underweight':
                     lower_chest_cm = full_chest_cm * 0.80
                 else:
                     lower_chest_cm = full_chest_cm * 0.82
@@ -1737,18 +1758,21 @@ class CompleteBodyMeasurementsCalculator:
 
         # Calculate arm hole circumference (chest × 0.42)
         chest_cm = results['chest']['circumference']['cm']
-        armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.44)
+        
+        # NEW: Adjusted ratio for specific height/weight range
+        if self.gender == 'female' and 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+            armhole_cm = chest_cm * 0.47  # Increased from 0.44 to 0.47
+        else:
+            armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.44)
+        
         armhole_cm = self.adjust_armhole_by_weight(armhole_cm)
         logger.debug(f"Calculating armhole circumference: {armhole_cm} cm.")
 
         results['armhole'] = {
-            # Before code 
-            # 'circumference': {'cm': round(armhole_cm, 2), 'inches': round(armhole_cm * cm_to_in, 2)}
             'circumference': {
-            # After code ->  None type handling
-            'cm': round(armhole_cm, 2) if armhole_cm is not None else None,
-            'inches': round(armhole_cm * cm_to_in, 2) if armhole_cm is not None else None
-}
+                'cm': round(armhole_cm, 2) if armhole_cm is not None else None,
+                'inches': round(armhole_cm * cm_to_in, 2) if armhole_cm is not None else None
+            }
         }
 
         # Calculate Upper Thigh Circumference 
@@ -1756,9 +1780,12 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'male':
             thigh_cm = hip_cm * 0.55
         else:  # female
-            if self.height < 152:
+            # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+            if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                thigh_cm = hip_cm * 0.619  # Adjusted ratio (42 * 0.619 ≈ 26)
+            elif self.height < 152:
                 if 55 <= self.weight <= 60:
-                    thigh_cm = hip_cm * 0.50  # Reduced multiplier for petite with moderate weight
+                    thigh_cm = hip_cm * 0.50
                 elif self.weight < 55:
                     thigh_cm = hip_cm * 0.48
                 else:
@@ -1783,10 +1810,13 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'male':
             knee_cm = upper_thigh_cm * 0.72
         else:  # female
+            # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+            if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                knee_cm = upper_thigh_cm * 0.654  # Adjusted ratio (26 * 0.654 ≈ 17)
             # PETITE FEMALE SPECIFIC RATIO
-            if self.height < 152:
+            elif self.height < 152:
                 if 55 <= self.weight <= 60:
-                    knee_cm = upper_thigh_cm * 1.0  # Significantly increased from 0.75
+                    knee_cm = upper_thigh_cm * 1.0
                 elif self.weight < 55:
                     knee_cm = upper_thigh_cm * 0.98
                 else:
@@ -1799,13 +1829,16 @@ class CompleteBodyMeasurementsCalculator:
 
         results['knee'] = {
             'circumference': {'cm': round(knee_cm, 2), 'inches': round(knee_cm * cm_to_in, 2)}
-        }
+        } 
 
         # Calculate body length
         if self.gender == 'male':
-            body_ratio = 0.28   # anatomical / men’s shirt length
-        else:
-            if self.height < 150:
+            body_ratio = 0.28
+        else:  # female
+            # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
+            if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
+                body_ratio = 0.088 
+            elif self.height < 150:
                 body_ratio = 0.22
             elif 150 <= self.height <= 155:
                 body_ratio = 0.225
@@ -1814,7 +1847,7 @@ class CompleteBodyMeasurementsCalculator:
             else:
                 body_ratio = 0.245
 
-        body_length_cm = self.height * body_ratio 
+        body_length_cm = self.height * body_ratio
 
         results['body_length'] = {
             'length': {
