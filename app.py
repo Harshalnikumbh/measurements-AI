@@ -1555,14 +1555,14 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'female':
             # ⭐ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
-                # For this demographic, knee measurements tend to be overestimated
-                # Reduction factor: 0.895 (10.5% decrease)
-                reduction_factor = 0.895
-                adjusted_knee = knee_circumference * reduction_factor
-                logger.info(f"✓ Adjusting knee for middle-aged demographic: {knee_circumference:.2f}cm × {reduction_factor} = {adjusted_knee:.2f}cm")
+                # For this demographic, apply minimal adjustment to reach ~17 inches
+                # Changed to 1.0 (no adjustment) to keep the base calculation
+                adjustment_factor = 1.0
+                adjusted_knee = knee_circumference * adjustment_factor
+                logger.info(f"✓ Adjusting knee for middle-aged demographic: {knee_circumference:.2f}cm × {adjustment_factor} = {adjusted_knee:.2f}cm")
                 return adjusted_knee
             
-            # PETITE FEMALE CORRECTIONS (height < 152 cm)
+            # PETITE FEMALE CORRECTIONS (height < 152)
             if self.height < 152:
                 if 55 <= self.weight <= 60:
                     return knee_circumference + 0.0
@@ -1849,6 +1849,7 @@ class CompleteBodyMeasurementsCalculator:
         }
 
         # Calculate Knee Circumference
+
         upper_thigh_cm = results['upper_thigh']['circumference']['cm']
 
         if self.gender == 'male':
@@ -1856,11 +1857,10 @@ class CompleteBodyMeasurementsCalculator:
         else:  # female
             # ⭐ MIDDLE-AGED SHORT-STATURE CORRECTION (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
-                # For this demographic, calculate knee from upper thigh with specific ratio
-                # Target: 17 inches (43.18 cm) from adjusted thigh ~63.5 cm
-                # Ratio: 0.68 (knee = 68% of upper thigh)
-                knee_cm = upper_thigh_cm * 0.68
-                logger.info(f"✓ Calculating knee for middle-aged demographic: {upper_thigh_cm:.2f}cm × 0.68 = {knee_cm:.2f}cm")
+                # Target: 17 inches (43.18 cm)
+                # Adjusted ratio to 0.66 to account for subsequent adjustment
+                knee_cm = upper_thigh_cm * 0.66
+                logger.info(f"✓ Calculating knee for middle-aged demographic: {upper_thigh_cm:.2f}cm × 0.66 = {knee_cm:.2f}cm")
             # Specific correction for height 160-170 cm and weight 50-55 kg
             elif 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 knee_cm = upper_thigh_cm * 0.654
@@ -1880,8 +1880,7 @@ class CompleteBodyMeasurementsCalculator:
 
         results['knee'] = {
             'circumference': {'cm': round(knee_cm, 2), 'inches': round(knee_cm * cm_to_in, 2)}
-        } 
-
+        }
         # Calculate body length
         if self.gender == 'male':
             body_ratio = 0.28
