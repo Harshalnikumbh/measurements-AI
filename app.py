@@ -1393,7 +1393,7 @@ class CompleteBodyMeasurementsCalculator:
             return waist_circumference - 8
         else:
             return waist_circumference
-
+    
     # Adjust hip for males and females only
     def adjust_hips_weight(self, hip_circumference):
         logger.debug("Adjusting hip circumference based on weight (legacy method).")
