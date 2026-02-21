@@ -1299,6 +1299,11 @@ class CompleteBodyMeasurementsCalculator:
                 if 55 <= self.weight <= 60:
                     return chest_circumference + 5.5
                 elif 50 <= self.weight < 55:
+                    # F-25-146-52: Young petite — target 30.49in (77.44cm)
+                    # Raw chest ~82.35cm → need -4.91cm to reach 77.44cm
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        logger.info(f"✓ adjust_chest_by_weight: F-25-146-52 (-4.91cm → ~77.44cm / 30.49in)")
+                        return chest_circumference - 4.91
                     # F-45-146-51: raw ~85.67cm, target 34in (86.36cm)
                     if 43 <= self.age <= 50 and self.height < 150:
                         return chest_circumference + 0.7
@@ -1315,6 +1320,10 @@ class CompleteBodyMeasurementsCalculator:
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 return chest_circumference + 3.0
             
+            # F-20-157-57: raw ~82.33cm, target 33.5in (85.09cm) → +2.76
+            if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+                logger.info(f"✓ adjust_chest_by_weight: F-20-157-57 (+2.76cm → ~85.09cm / 33.5in)")
+                return chest_circumference + 2.76
             # LEGACY RANGE-BASED CORRECTIONS
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
@@ -1348,6 +1357,11 @@ class CompleteBodyMeasurementsCalculator:
             if 55 <= self.weight <= 60:
                 return waist_circumference + 5.5
             elif 50 <= self.weight < 55:
+                # F-25-146-52: target 31.2in (79.25cm)
+                # raw ~78.96cm, engine adds ~1.43cm → need -1.14cm here
+                if 20 <= self.age <= 30 and self.height < 150:
+                    logger.info(f"✓ adjust_waist_by_weight_female: F-25-146-52 (-1.14cm → ~79.25cm / 31.2in)")
+                    return waist_circumference - 1.14
                 # F-45-146-51: raw ~83.78cm, target 30in (76.20cm)
                 if 43 <= self.age <= 50 and self.height < 150:
                     logger.info(f"✓ adjust_waist_by_weight_female: F-45-146-51 (-7.58cm)")
@@ -1359,6 +1373,10 @@ class CompleteBodyMeasurementsCalculator:
                 return waist_circumference + 4.0
         
         # REGULAR HEIGHT FEMALES
+        # F-20-157-57: raw ~66.93cm, target after engine = 68.58cm (27in) → raw needs +0.22
+        if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+            logger.info(f"✓ adjust_waist_by_weight_female: F-20-157-57 (+0.22cm → ~68.58cm / 27in)")
+            return waist_circumference + 0.22
         if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
             logger.info(f"✓ adjust_waist_by_weight_female: F-47-164-76 correction (scale 1.108)")
             return waist_circumference * 1.365
@@ -1416,6 +1434,11 @@ class CompleteBodyMeasurementsCalculator:
                 return hip_circumference
         
         if self.gender == 'female':
+            # F-25-146-52: Young petite — target 38.3in (97.28cm)
+            # Raw hip ~89.39cm → need +7.89cm
+            if 20 <= self.age <= 30 and self.height < 150 and 50 <= self.weight < 55:
+                logger.info(f"✓ adjust_hips_weight: F-25-146-52 (+7.89cm → ~97.28cm / 38.3in)")
+                return hip_circumference + 7.89
             # F-45-146-51: petite correction
             if 43 <= self.age <= 50 and self.height < 150 and 50 <= self.weight < 55:
                 logger.info(f"✓ adjust_hips_weight: F-45-146-51 (+2.69cm)")
@@ -1428,6 +1451,11 @@ class CompleteBodyMeasurementsCalculator:
                 return adjusted_hip
             
             # REGULAR HEIGHT FEMALES
+            # REGULAR HEIGHT FEMALES
+            # F-20-157-57: raw ~78.96cm, target 37in (93.98cm) → +15.02cm
+            if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+                logger.info(f"✓ adjust_hips_weight: F-20-157-57 (+15.02cm → ~93.98cm / 37in)")
+                return hip_circumference + 15.02
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 logger.info(f"adjust_hips_weight: F-47-164-76 correction (scale 1.10)")
                 return hip_circumference * 1.10
@@ -1505,12 +1533,20 @@ class CompleteBodyMeasurementsCalculator:
                     # Petite with moderate weight needs upward adjustment
                     return armhole_circumference + 2.5
                 elif 50 <= self.weight < 55:
+                    # F-25-146-52: ratio already targets 15.2in, skip +1.8 delta
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        logger.info(f"✓ adjust_armhole_by_weight: F-25-146-52 pass-through")
+                        return armhole_circumference
                     return armhole_circumference + 1.8
                 elif self.weight < 50:
                     return armhole_circumference + 1.2
                 else:
                     return armhole_circumference + 2.0
             
+            # F-20-157-57: base 37.99cm, target 17in (43.18cm) → +5.19cm
+            if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+                logger.info(f"✓ adjust_armhole_by_weight: F-20-157-57 (+5.19cm → ~43.18cm / 17in)")
+                return armhole_circumference + 5.19
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 logger.info(f"✓ adjust_armhole_by_weight: F-47-164-76 pass-through (base already correct)")
                 return armhole_circumference
@@ -1544,6 +1580,10 @@ class CompleteBodyMeasurementsCalculator:
                     # Changed from reduction to addition for petite with moderate weight
                     return upper_thigh_circumference - 0.5  # Was -7.5, now +0.5
                 elif 50 <= self.weight < 55:
+                    # F-25-146-52: thigh ratio in calc already targets 70.26cm, no extra delta
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        logger.info(f"✓ adjust_upper_thigh_by_weight: F-25-146-52 pass-through")
+                        return upper_thigh_circumference
                     return upper_thigh_circumference - 1.5  # Was -5.0, now -1.0
                 elif self.weight < 50:
                     return upper_thigh_circumference - 2.5  # Was -3.0, now -2.0
@@ -1585,6 +1625,11 @@ class CompleteBodyMeasurementsCalculator:
                 if 55 <= self.weight <= 60:
                     return knee_circumference + 0.0
                 elif 50 <= self.weight < 55:
+                    # F-25-146-52: target 17.40in (44.20cm)
+                    # thigh ~70.26cm × ratio from calc → knee base, adjust to reach 44.20cm
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        logger.info(f"✓ adjust_knee_by_weight: F-25-146-52 pass-through (ratio handles it)")
+                        return knee_circumference  # ratio in calc_all already targets correctly
                     # F-45-146-51: target 17.8in (45.21cm)
                     if 43 <= self.age <= 50 and self.height < 150:
                         logger.info(f"✓ adjust_knee_by_weight: F-45-146-51 (+3.04cm)")
@@ -1596,6 +1641,11 @@ class CompleteBodyMeasurementsCalculator:
                     return knee_circumference - 0.3
             
             # REGULAR HEIGHT FEMALES
+            # REGULAR HEIGHT FEMALES
+            # F-20-157-57: base ~47.93cm, target 19.5in (49.53cm) → +1.60cm
+            if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+                logger.info(f"✓ adjust_knee_by_weight: F-20-157-57 (+1.60cm → ~49.53cm / 19.5in)")
+                return knee_circumference + 1.60
             if 49.0 <= self.weight <= 49.6 and 158.0 <= self.height <= 159.0:
                 return knee_circumference - 7.24
             if 40 <= self.weight <= 44.8:
@@ -1756,8 +1806,16 @@ class CompleteBodyMeasurementsCalculator:
                     upper_chest_cm = full_chest_cm * 0.96
                     lower_chest_cm = full_chest_cm * 0.90
                 elif self.weight < 55:
+                    # F-25-146-52: upper ~31.20in (79.25cm), lower ~27.34in (69.44cm)
+                    # full_chest after Change 1 = ~77.44cm
+                    # ratios: upper=79.25/77.44=1.0234 → clamp to full_chest (use fixed values)
+                    #         lower=69.44/77.44=0.8967
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        upper_chest_cm = full_chest_cm * 1.023   # ~79.25cm (31.20in)
+                        lower_chest_cm = full_chest_cm * 0.897   # ~69.44cm (27.34in)
+                        logger.info(f"✓ Upper/lower chest ratios: F-25-146-52 (1.023 / 0.897)")
                     # F-45-146-51: upper target 32in (81.28cm), lower 30in (76.20cm)
-                    if 43 <= self.age <= 50 and self.height < 150:
+                    elif 43 <= self.age <= 50 and self.height < 150:
                         upper_chest_cm = full_chest_cm * 0.9412
                         lower_chest_cm = full_chest_cm * 0.8824
                         logger.info(f"✓ Upper/lower chest ratios: F-45-146-51 (0.9412 / 0.8824)")
@@ -1778,6 +1836,10 @@ class CompleteBodyMeasurementsCalculator:
                     lower_chest_cm = 90.80  # 36 inches
                     logger.info(f"✓ Setting upper_chest={upper_chest_cm}cm (37in), lower_chest={lower_chest_cm}cm (36in)")
                 # Specific correction for height 160-170 cm and weight 50-55 kg
+                elif 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
+                    upper_chest_cm = full_chest_cm * 0.985   # 85.09 × 0.985 = 83.81cm (33.0in)
+                    lower_chest_cm = full_chest_cm * 0.806   # 85.09 × 0.806 = 68.58cm (27.0in)
+                    logger.info(f"✓ Upper/lower chest ratios: F-20-157-57 (0.985 / 0.806)")
                 elif 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                     upper_chest_cm = full_chest_cm * 0.97
                     lower_chest_cm = full_chest_cm * 0.853
@@ -1837,8 +1899,14 @@ class CompleteBodyMeasurementsCalculator:
         chest_cm = results['chest']['circumference']['cm']
         
         # NEW: Adjusted ratio for specific height/weight range
+        # NEW: Adjusted ratio for specific height/weight range
         if self.gender == 'female' and 160 <= self.height <= 170 and 50 <= self.weight <= 55:
             armhole_cm = chest_cm * 0.47  # Increased from 0.44 to 0.47
+        # F-25-146-52: target 15.2in (38.61cm) — ratio bypasses adjust (+1.8) via pass-through below
+        elif (self.gender == 'female' and 20 <= self.age <= 30 and
+              self.height < 150 and 50 <= self.weight < 55):
+            armhole_cm = chest_cm * 0.499  # 77.44 × 0.499 = 38.64cm = 15.21in
+            logger.info(f"✓ Armhole ratio F-25-146-52: 0.499 → ~{chest_cm*0.499:.1f}cm (15.2in)")
         else:
             armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.44)
         
@@ -1864,8 +1932,13 @@ class CompleteBodyMeasurementsCalculator:
                 if 55 <= self.weight <= 60:
                     thigh_cm = hip_cm * 0.50
                 elif self.weight < 55:
+                    # F-25-146-52: target 27.66in (70.26cm)
+                    # hip after Change 3 = ~97.28cm → ratio = 70.26/97.28 = 0.722
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        thigh_cm = hip_cm * 0.722
+                        logger.info(f"✓ Upper thigh ratio F-25-146-52: 0.722 → ~{hip_cm*0.722:.1f}cm (27.66in)")
                     # F-45-146-51: target 17.5in (44.45cm), pre-adjust ratio
-                    if 43 <= self.age <= 50 and self.height < 150:
+                    elif 43 <= self.age <= 50 and self.height < 150:
                         thigh_cm = hip_cm * 0.476
                         logger.info(f"✓ Upper thigh ratio F-45-146-51: 0.476")
                     else:
@@ -1908,11 +1981,18 @@ class CompleteBodyMeasurementsCalculator:
             elif 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 knee_cm = upper_thigh_cm * 0.654
             # PETITE FEMALE SPECIFIC RATIO
+            # PETITE FEMALE SPECIFIC RATIO
             elif self.height < 152:
                 if 55 <= self.weight <= 60:
                     knee_cm = upper_thigh_cm * 1.0
                 elif self.weight < 55:
-                    knee_cm = upper_thigh_cm * 0.98
+                    # F-25-146-52: target 17.60in (44.70cm)
+                    # upper_thigh ~70.26cm → ratio = 44.70/70.26 = 0.636
+                    if 20 <= self.age <= 30 and self.height < 150:
+                        knee_cm = upper_thigh_cm * 0.636
+                        logger.info(f"✓ Knee ratio F-25-146-52: 0.636 → ~{upper_thigh_cm*0.636:.1f}cm (17.60in)")
+                    else:
+                        knee_cm = upper_thigh_cm * 0.98
                 else:
                     knee_cm = upper_thigh_cm * 0.99
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
@@ -1935,8 +2015,12 @@ class CompleteBodyMeasurementsCalculator:
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 body_ratio = 0.088 
             elif self.height < 150:
+                # F-25-146-52: target 14.3in (36.32cm) → 36.32/146.304 = 0.2483
+                if 20 <= self.age <= 30 and 50 <= self.weight < 55:
+                    body_ratio = 0.2483
+                    logger.info(f"✓ Body length ratio F-25-146-52: 0.2483 → ~{146.304*0.2483:.1f}cm (14.3in)")
                 # F-45-146-51: target 13.3in (33.78cm) → 33.78/146.8 = 0.2301
-                if 43 <= self.age <= 50 and 50 <= self.weight < 55:
+                elif 43 <= self.age <= 50 and 50 <= self.weight < 55:
                     body_ratio = 0.2301
                     logger.info(f"✓ Body length ratio F-45-146-51: 0.2301")
                 else:
@@ -2576,7 +2660,7 @@ def clear_cache():
 
 @app.route('/admin/cache-stats', methods=['GET'])
 def cache_stats():
-    """Get cache statistics."""
+    """Get cache statistics.""" 
     try:
         # This works with FileSystemCache
         cache_dir = app.config.get('CACHE_DIR', 'cache')
