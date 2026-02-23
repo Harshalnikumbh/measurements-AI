@@ -35,6 +35,48 @@ ch.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(ch)
 
+import uuid
+
+def new_request_id() -> str:
+    """Generate a short unique request ID for log correlation."""
+    return uuid.uuid4().hex[:8]
+
+
+class StageTimer:
+    """
+    Lightweight context manager for timing named pipeline stages.
+    Usage:
+        timer = StageTimer(req_id)
+        with timer.stage("pose_validation"):
+            ...
+        timer.log_summary()
+    """
+    def __init__(self, req_id: str):
+        self.req_id = req_id
+        self._stages: list[tuple[str, float]] = []
+        self._current: tuple[str, float] | None = None
+
+    def stage(self, name: str):
+        return self._StageCtx(self, name)
+
+    class _StageCtx:
+        def __init__(self, parent, name):
+            self.parent = parent
+            self.name = name
+        def __enter__(self):
+            self.t0 = time.perf_counter()
+            logger.info(f"[{self.parent.req_id}] ▶ {self.name}")
+            return self
+        def __exit__(self, *_):
+            elapsed = time.perf_counter() - self.t0
+            self.parent._stages.append((self.name, elapsed))
+            logger.info(f"[{self.parent.req_id}] ✓ {self.name} — {elapsed:.2f}s")
+
+    def log_summary(self):
+        total = sum(t for _, t in self._stages)
+        breakdown = " | ".join(f"{n}={t:.2f}s" for n, t in self._stages)
+        logger.info(f"[{self.req_id}] ═ TOTAL {total:.2f}s ┊ {breakdown}")
+
 # MediaPipe for pose detection
 try:
     import mediapipe as mp
@@ -48,7 +90,58 @@ if 'PYOPENGL_PLATFORM' in os.environ:
 
 
 # Thread lock for model inference
-model_lock = threading.Lock()
+import queue
+
+MAX_INFERENCE_QUEUE = 4  # max waiting requests
+
+_inference_queue = queue.Queue(maxsize=MAX_INFERENCE_QUEUE)
+
+def _inference_worker():
+    """Single worker thread that drains the inference queue."""
+    logger.info("Inference worker thread started.")
+    while True:
+        task = _inference_queue.get()
+        if task is None:  # Poison pill — shut down
+            logger.info("Inference worker received shutdown signal.")
+            break
+        fn, args, kwargs, result_holder, event = task
+        try:
+            result_holder['result'] = fn(*args, **kwargs)
+        except Exception as e:
+            result_holder['error'] = e
+        finally:
+            event.set()
+            _inference_queue.task_done()
+
+# Start the single inference worker at module load
+_inference_thread = threading.Thread(target=_inference_worker, daemon=True, name="InferenceWorker")
+_inference_thread.start()
+
+
+def run_inference(fn, *args, timeout=300, **kwargs):
+    """
+    Submit fn(*args, **kwargs) to the inference worker.
+    Blocks the calling thread until done or timeout.
+    Raises queue.Full if the queue is at capacity.
+    Raises TimeoutError if inference takes too long.
+    """
+    result_holder = {}
+    event = threading.Event()
+    task = (fn, args, kwargs, result_holder, event)
+
+    try:
+        _inference_queue.put_nowait(task)
+    except queue.Full:
+        raise queue.Full("Inference queue is full. Server is busy — please retry shortly.")
+
+    completed = event.wait(timeout=timeout)
+    if not completed:
+        raise TimeoutError(f"Inference timed out after {timeout}s.")
+
+    if 'error' in result_holder:
+        raise result_holder['error']
+
+    return result_holder['result']
 
 # Try to import HMR2 dependencies
 HMR2_AVAILABLE = False
@@ -137,6 +230,138 @@ CONTENT_TYPE = "image/jpeg"
 def allowed_file(filename):
     """Check if the file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Allowed MIME types for uploaded images
+ALLOWED_MIME_TYPES = {'image/jpeg', 'image/png'}
+
+def validate_image_file(file_storage):
+    
+    # 1. Extension check
+    if not allowed_file(file_storage.filename):
+        return False, f"Invalid file extension. Allowed: PNG, JPG, JPEG."
+
+    # 2. MIME type check
+    mime = file_storage.mimetype or ''
+    if mime not in ALLOWED_MIME_TYPES:
+        logger.warning(f"Rejected upload '{file_storage.filename}' - bad MIME type: '{mime}'")
+        return False, f"Invalid file type detected (MIME: {mime}). Upload a real JPEG or PNG image."
+
+    # 3. Read bytes and attempt cv2 decode
+    file_storage.stream.seek(0)
+    raw_bytes = file_storage.stream.read()
+    file_storage.stream.seek(0)  # Reset so callers can still .save()
+
+    if not raw_bytes:
+        logger.warning(f"Rejected upload '{file_storage.filename}' - empty file.")
+        return False, "Uploaded file is empty."
+
+    np_arr = np.frombuffer(raw_bytes, np.uint8)
+    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+    if img is None:
+        logger.warning(f"Rejected upload '{file_storage.filename}' - cv2 could not decode image.")
+        return False, "Uploaded file is corrupted or not a valid image."
+
+    logger.debug(f"Image '{file_storage.filename}' validated: {img.shape[1]}x{img.shape[0]}px, MIME={mime}")
+    return True, None
+# --- Image Constraints ---
+IMG_MIN_DIMENSION    = 200     # px — shorter side minimum
+IMG_MAX_DIMENSION    = 4096    # px — longer side maximum
+IMG_MAX_MEGAPIXELS   = 12      # MP — total pixel budget
+IMG_ASPECT_RATIO_MIN = 0.25    # width/height — rejects landscape crops
+IMG_ASPECT_RATIO_MAX = 1.5     # width/height — rejects ultra-wide crops
+IMG_TARGET_LONG_SIDE = 1024    # px — normalize to this before inference
+
+def check_image_dimensions(img: np.ndarray, label: str = "image"):
+    """Validate image dimensions and aspect ratio."""
+    h, w = img.shape[:2]
+    short_side  = min(h, w)
+    long_side   = max(h, w)
+    megapixels  = (h * w) / 1_000_000
+    aspect      = w / h
+
+    if short_side < IMG_MIN_DIMENSION:
+        return False, (f"{label} is too small ({w}×{h}px). "
+                       f"Minimum shorter side: {IMG_MIN_DIMENSION}px.")
+    if long_side > IMG_MAX_DIMENSION:
+        return False, (f"{label} is too large ({w}×{h}px). "
+                       f"Maximum longer side: {IMG_MAX_DIMENSION}px.")
+    if megapixels > IMG_MAX_MEGAPIXELS:
+        return False, (f"{label} has too many pixels ({megapixels:.1f} MP). "
+                       f"Maximum: {IMG_MAX_MEGAPIXELS} MP.")
+    if not (IMG_ASPECT_RATIO_MIN <= aspect <= IMG_ASPECT_RATIO_MAX):
+        return False, (f"{label} has an unusual aspect ratio ({aspect:.2f}). "
+                       f"Expected portrait or near-square (ratio "
+                       f"{IMG_ASPECT_RATIO_MIN}–{IMG_ASPECT_RATIO_MAX}).")
+
+    logger.debug(f"{label} dimensions OK: {w}×{h}px, {megapixels:.2f}MP, ratio={aspect:.2f}")
+    return True, None
+
+def normalize_image(img: np.ndarray, label: str = "image") -> np.ndarray:
+ 
+    # 1. Strip alpha
+    if img.ndim == 3 and img.shape[2] == 4:
+        img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        logger.debug(f"{label}: stripped alpha channel")
+
+    # 2. EXIF rotation
+    try:
+        import piexif
+        _, encoded = cv2.imencode('.jpg', img)
+        exif_dict = piexif.load(encoded.tobytes())
+        orientation = exif_dict.get('0th', {}).get(piexif.ImageIFD.Orientation, 1)
+        rotations = {
+            3: cv2.ROTATE_180,
+            6: cv2.ROTATE_90_CLOCKWISE,
+            8: cv2.ROTATE_90_COUNTERCLOCKWISE,
+        }
+        if orientation in rotations:
+            img = cv2.rotate(img, rotations[orientation])
+            logger.debug(f"{label}: applied EXIF rotation (orientation={orientation})")
+    except Exception:
+        pass  # piexif not installed or no EXIF — silently continue
+
+    # 3. Downscale to target long side (never upscale)
+    h, w = img.shape[:2]
+    long_side = max(h, w)
+    if long_side > IMG_TARGET_LONG_SIDE:
+        scale = IMG_TARGET_LONG_SIDE / long_side
+        new_w = int(round(w * scale))
+        new_h = int(round(h * scale))
+        img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        logger.debug(f"{label}: resized {w}×{h} → {new_w}×{new_h}")
+
+    return img
+
+def validate_and_normalize_upload(file_storage, label: str = "image"):
+    """
+    Full pipeline: MIME + decode + dimension check + normalize.
+    Returns: (normalized_bgr_array or None, error_message or None)
+    """
+    # Step 1: MIME + basic decode (validate_image_file already seeks back to 0)
+    is_valid, err = validate_image_file(file_storage)
+    if not is_valid:
+        return None, err
+
+    # Step 2: Decode to numpy (UNCHANGED keeps possible EXIF)
+    file_storage.stream.seek(0)
+    raw = file_storage.stream.read()
+    file_storage.stream.seek(0)
+    arr = np.frombuffer(raw, np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
+
+    if img is None:
+        return None, f"{label}: could not decode image data."
+
+    # Step 3: Dimension / aspect check
+    is_valid, err = check_image_dimensions(img, label)
+    if not is_valid:
+        return None, err
+
+    # Step 4: Normalize (EXIF rotation, alpha strip, resize)
+    img = normalize_image(img, label)
+
+    return img, None
 
 # --- Pose Validation Class ---
 class PoseValidator:
@@ -2209,9 +2434,11 @@ def _process_image_to_mesh_internal(img_path, output_path, model, detector, rend
         batch = recursive_to(batch, device)
         
         # Use lock for model inference to ensure thread safety
-        with model_lock:
+        def _do_inference(b):
             with torch.no_grad():
-                out = model(batch)
+                return model(b)
+
+        out = run_inference(_do_inference, batch)
         
         verts = out['pred_vertices'][0].detach().cpu().numpy()
         pred_cam = out['pred_cam']
@@ -2405,7 +2632,10 @@ def download_tryon(filename):
 
 @app.route('/process', methods=['POST'])
 def process():
-    logger.debug("Starting body measurement processing.")
+    req_id = new_request_id()
+    timer = StageTimer(req_id)
+    logger.info(f"[{req_id}] ══ /process request received ══")
+    summary_logged = False
     front_path = None
     side_path = None
     
@@ -2467,79 +2697,83 @@ def process():
         
         if front_file.filename == '' or side_file.filename == '':
             return jsonify({'success': False, 'error': 'Please select both images'})
-        
-        if not (allowed_file(front_file.filename) and allowed_file(side_file.filename)):
-            return jsonify({'success': False, 'error': 'Invalid file type. Use PNG, JPG, or JPEG'})
-        
         # Save uploaded files
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         front_filename = secure_filename(f"front_{timestamp}_{front_file.filename}")
-        side_filename = secure_filename(f"side_{timestamp}_{side_file.filename}")
-        
+        side_filename  = secure_filename(f"side_{timestamp}_{side_file.filename}")
+
         front_path = os.path.join(app.config['UPLOAD_FOLDER'], front_filename)
-        side_path = os.path.join(app.config['UPLOAD_FOLDER'], side_filename)
-        
-        front_file.save(front_path)
-        side_file.save(side_path)
-        
+        side_path  = os.path.join(app.config['UPLOAD_FOLDER'], side_filename)
+
+        with timer.stage("upload_save"):
+            front_img, err = validate_and_normalize_upload(front_file, label="Front image")
+            if front_img is None:
+                return jsonify({'success': False, 'error': err})
+            cv2.imwrite(front_path, front_img)
+            logger.info(f"[{req_id}] Front saved: {front_img.shape[1]}×{front_img.shape[0]}px")
+
+            side_img, err = validate_and_normalize_upload(side_file, label="Side image")
+            if side_img is None:
+                return jsonify({'success': False, 'error': err})
+            cv2.imwrite(side_path, side_img)
+            logger.info(f"[{req_id}] Side saved: {side_img.shape[1]}×{side_img.shape[0]}px") 
+
         # ===== POSE VALIDATION =====
         if MEDIAPIPE_AVAILABLE:
-            logger.debug("Performing pose validation using MediaPipe.")
-            try:
-                validator = PoseValidator()
-                is_valid, validation_results = validator.validate_images_cached(front_path, side_path)
-                
-                if not is_valid:
-                    # Build detailed error message
-                    error_messages = []
-                    
-                    if not validation_results['front_accepted']:
-                        if validation_results['front_angle'] is not None:
-                            error_messages.append(
-                                f"❌ Front image: Person appears to be bending. "
-                                f"Please upload a front image where you're standing straight with arms by your sides."
-                            )
-                        else:
-                            error_messages.append(
-                                f"❌ Front image: {validation_results['front_message']}"
-                            )
-                    
-                    if not validation_results['side_accepted']:
-                        if validation_results['side_angle'] is not None:
-                            error_messages.append(
-                                f"❌ Side image: Person appears to be bending. "
-                                f"Detected waist angle: {validation_results['side_angle']:.1f}° "
-                                f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
-                                f"Please upload a side image where you're standing straight."
-                            )
-                        else:
-                            error_messages.append(
-                                f"❌ Side image: {validation_results['side_message']}"
-                            )
-                    
-                    if validation_results['errors']:
-                        for err in validation_results['errors']:
-                            if err not in str(error_messages):
-                                error_messages.append(f"⚠️ {err}")
-                    
-                    error_message = "\n\n".join(error_messages)
-                    error_message += "\n\n💡 Tips for better results:\n" \
-                                    "• Stand upright with your back straight\n" \
-                                    "• Keep arms relaxed at your sides\n" \
-                                    "• Ensure full body is visible in frame\n" \
-                                    "• Use good lighting and clear background"
-                    
-                    logger.debug("Pose validation failed.")
-                    return jsonify({
-                        'success': False,
-                        'error': error_message,
-                        'validation_details': validation_results
-                    })
-                
-                logger.debug("✓ Pose validation passed for both images")
-                
-            except Exception as e:
-                logger.warning(f"Pose validation failed with error: {str(e)}")
+            with timer.stage("pose_validation"):
+                try:
+                    validator = PoseValidator()
+                    is_valid, validation_results = validator.validate_images_cached(front_path, side_path)
+                    if not is_valid:
+                        # Build detailed error message
+                        error_messages = []
+
+                        if not validation_results['front_accepted']:
+                            if validation_results['front_angle'] is not None:
+                                error_messages.append(
+                                    f"❌ Front image: Person appears to be bending. "
+                                    f"Please upload a front image where you're standing straight with arms by your sides."
+                                )
+                            else:
+                                error_messages.append(
+                                    f"❌ Front image: {validation_results['front_message']}"
+                                )
+
+                        if not validation_results['side_accepted']:
+                            if validation_results['side_angle'] is not None:
+                                error_messages.append(
+                                    f"❌ Side image: Person appears to be bending. "
+                                    f"Detected waist angle: {validation_results['side_angle']:.1f}° "
+                                    f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
+                                    f"Please upload a side image where you're standing straight."
+                                )
+                            else:
+                                error_messages.append(
+                                    f"❌ Side image: {validation_results['side_message']}"
+                                )
+
+                        if validation_results['errors']:
+                            for err in validation_results['errors']:
+                                if err not in str(error_messages):
+                                    error_messages.append(f"⚠️ {err}")
+
+                        error_message = "\n\n".join(error_messages)
+                        error_message += "\n\n💡 Tips for better results:\n" \
+                                        "• Stand upright with your back straight\n" \
+                                        "• Keep arms relaxed at your sides\n" \
+                                        "• Ensure full body is visible in frame\n" \
+                                        "• Use good lighting and clear background"
+
+                        logger.debug("Pose validation failed.")
+                        return jsonify({
+                            'success': False,
+                            'error': error_message,
+                            'validation_details': validation_results
+                        })
+
+                    logger.debug("✓ Pose validation passed for both images")
+                except Exception as e:
+                    logger.warning(f"[{req_id}] Pose validation error: {str(e)}")
         
         # ===== PARALLEL HMR2 PROCESSING =====
         front_obj = os.path.join(app.config['OUTPUT_FOLDER'], f'front_mesh_{timestamp}.obj')
@@ -2547,69 +2781,74 @@ def process():
         
         logger.debug("Processing front and side images in parallel with HMR2...")
         
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            front_future = executor.submit(
-                process_image_to_mesh, 
-                front_path, 
-                front_obj, 
-                model, 
-                detector, 
-                renderer, 
-                model_cfg
-            )
-            side_future = executor.submit(
-                process_image_to_mesh, 
-                side_path, 
-                side_obj, 
-                model, 
-                detector, 
-                renderer, 
-                model_cfg
-            )
+        with timer.stage("hmr2_parallel"):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                front_future = executor.submit(
+                    process_image_to_mesh, 
+                    front_path, 
+                    front_obj, 
+                    model, 
+                    detector, 
+                    renderer, 
+                    model_cfg
+                )
+                side_future = executor.submit(
+                    process_image_to_mesh, 
+                    side_path, 
+                    side_obj, 
+                    model, 
+                    detector, 
+                    renderer, 
+                    model_cfg
+                )
+                
+                try:
+                    front_result = front_future.result(timeout=300)
+                    side_result = side_future.result(timeout=300)
+                except queue.Full as e:
+                    logger.warning(f"[{req_id}] Inference queue full — rejecting request")
+                    return jsonify({'success': False, 'error': 'Server is busy. Please try again in a moment.'}), 503
+                except TimeoutError as e:
+                    logger.error(f"[{req_id}] Inference timeout: {str(e)}")
+                    return jsonify({'success': False, 'error': 'Processing timed out. Try a smaller image.'}), 504
+                except Exception as e:
+                    logger.error(f"[{req_id}] Parallel processing error: {str(e)}")
+                    return jsonify({'success': False, 'error': f'Processing failed: {str(e)}'})
             
-            try:
-                front_result = front_future.result(timeout=300)
-                side_result = side_future.result(timeout=300)
-            except Exception as e:
-                logger.error(f"Error during parallel processing: {str(e)}")
+            # Check results
+            if front_result is None:
                 return jsonify({
                     'success': False,
-                    'error': f'Processing failed: {str(e)}'
+                    'error': 'Could not detect a person in the front image.'
                 })
-        
-        # Check results
-        if front_result is None:
-            return jsonify({
-                'success': False,
-                'error': 'Could not detect a person in the front image.'
-            })
-        
-        if side_result is None:
-            return jsonify({
-                'success':  False,
-                'error': 'Could not detect a person in the side image.'
-            })
-        
-        logger.debug("✓ Both images processed successfully!")
+            
+            if side_result is None:
+                return jsonify({
+                    'success':  False,
+                    'error': 'Could not detect a person in the side image.'
+                })
+            
+            logger.debug("✓ Both images processed successfully!")
         
         # ===== CALCULATE MEASUREMENTS WITH NEW CORRECTION ENGINE =====
-        logger.debug("Calculating body measurements with advanced corrections...")
-        calculator = CompleteBodyMeasurementsCalculator(
-            gender=gender,
-            weight=weight,
-            height=height,
-            age=age,
-            body_type=body_type,
-            age_group=age_group,
-            fat_distribution=fat_distribution,
-            muscle_level=muscle_level,
-            activity_level=activity_level,
-            shoulder_type=shoulder_type,
-            measurement_goal=measurement_goal,
-            fit_preference=fit_preference
-        )
-        
-        measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
+        with timer.stage("measurement_calc"):
+            logger.debug("Calculating body measurements with advanced corrections...")
+            calculator = CompleteBodyMeasurementsCalculator(
+                gender=gender,
+                weight=weight,
+                height=height,
+                age=age,
+                body_type=body_type,
+                age_group=age_group,
+                fat_distribution=fat_distribution,
+                muscle_level=muscle_level,
+                activity_level=activity_level,
+                shoulder_type=shoulder_type,
+                measurement_goal=measurement_goal,
+                fit_preference=fit_preference
+            )
+            
+            measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
         
         if measurements is None:
             return jsonify({
@@ -2619,14 +2858,16 @@ def process():
         
         logger.debug("✓ Measurements calculated successfully!")
         
-        # Cleanup
-        for f in [front_path, side_path, front_obj, side_obj]:
-            if f and os.path.exists(f):
-                try:
-                    os.remove(f)
-                except Exception as e:
-                    logger.warning(f"Warning: Could not cleanup {f}: {str(e)}")
-        
+        with timer.stage("cleanup"):
+            for f in [front_path, side_path, front_obj, side_obj]:
+                if f and os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except Exception as e:
+                        logger.warning(f"[{req_id}] Cleanup failed {f}: {str(e)}")
+
+        timer.log_summary()
+        summary_logged = True
         return jsonify({'success': True, 'measurements': measurements})
         
     except ValueError as e:
@@ -2646,6 +2887,8 @@ def process():
                     os.remove(file_path)
                 except Exception as e:
                     logger.warning(f"Failed to cleanup {file_path}: {str(e)}")
+        if not summary_logged:
+            timer.log_summary()
                     
 @app.route('/admin/clear-cache', methods=['POST'])
 def clear_cache():
