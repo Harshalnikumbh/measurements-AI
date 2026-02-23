@@ -2801,13 +2801,27 @@ def process():
             front_img, err = validate_and_normalize_upload(front_file, label="Front image")
             if front_img is None:
                 return jsonify({'success': False, 'error': err})
-            cv2.imwrite(front_path, front_img)
+            if not cv2.imwrite(front_path, front_img):
+                logger.error(f"[{req_id}] IMAGE_SAVE_FAILED: Could not save front image to '{front_path}'")
+                return jsonify({
+                    'success': False,
+                    'code': 'IMAGE_SAVE_FAILED',
+                    'error': 'Failed to save processed front image.',
+                    'request_id': req_id
+                }), 500
             logger.info(f"[{req_id}] Front saved: {front_img.shape[1]}Ã—{front_img.shape[0]}px")
 
             side_img, err = validate_and_normalize_upload(side_file, label="Side image")
             if side_img is None:
                 return jsonify({'success': False, 'error': err})
-            cv2.imwrite(side_path, side_img)
+            if not cv2.imwrite(side_path, side_img):
+                logger.error(f"[{req_id}] IMAGE_SAVE_FAILED: Could not save side image to '{side_path}'")
+                return jsonify({
+                    'success': False,
+                    'code': 'IMAGE_SAVE_FAILED',
+                    'error': 'Failed to save processed side image.',
+                    'request_id': req_id
+                }), 500
             logger.info(f"[{req_id}] Side saved: {side_img.shape[1]}Ã—{side_img.shape[0]}px") 
 
         # ===== POSE VALIDATION =====
