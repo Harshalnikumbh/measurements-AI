@@ -1,4 +1,4 @@
-import os
+﻿import os
 import cv2
 import math
 import time
@@ -65,17 +65,17 @@ class StageTimer:
             self.name = name
         def __enter__(self):
             self.t0 = time.perf_counter()
-            logger.info(f"[{self.parent.req_id}] ▶ {self.name}")
+            logger.info(f"[{self.parent.req_id}] â–¶ {self.name}")
             return self
         def __exit__(self, *_):
             elapsed = time.perf_counter() - self.t0
             self.parent._stages.append((self.name, elapsed))
-            logger.info(f"[{self.parent.req_id}] ✓ {self.name} — {elapsed:.2f}s")
+            logger.info(f"[{self.parent.req_id}] âœ“ {self.name} â€” {elapsed:.2f}s")
 
     def log_summary(self):
         total = sum(t for _, t in self._stages)
         breakdown = " | ".join(f"{n}={t:.2f}s" for n, t in self._stages)
-        logger.info(f"[{self.req_id}] ═ TOTAL {total:.2f}s ┊ {breakdown}")
+        logger.info(f"[{self.req_id}] â• TOTAL {total:.2f}s â”Š {breakdown}")
 
 # MediaPipe for pose detection
 try:
@@ -101,7 +101,7 @@ def _inference_worker():
     logger.info("Inference worker thread started.")
     while True:
         task = _inference_queue.get()
-        if task is None:  # Poison pill — shut down
+        if task is None:  # Poison pill â€” shut down
             logger.info("Inference worker received shutdown signal.")
             break
         fn, args, kwargs, result_holder, event = task
@@ -132,7 +132,7 @@ def run_inference(fn, *args, timeout=300, **kwargs):
     try:
         _inference_queue.put_nowait(task)
     except queue.Full:
-        raise queue.Full("Inference queue is full. Server is busy — please retry shortly.")
+        raise queue.Full("Inference queue is full. Server is busy â€” please retry shortly.")
 
     completed = event.wait(timeout=timeout)
     if not completed:
@@ -265,12 +265,12 @@ def validate_image_file(file_storage):
     logger.debug(f"Image '{file_storage.filename}' validated: {img.shape[1]}x{img.shape[0]}px, MIME={mime}")
     return True, None
 # --- Image Constraints ---
-IMG_MIN_DIMENSION    = 200     # px — shorter side minimum
-IMG_MAX_DIMENSION    = 4096    # px — longer side maximum
-IMG_MAX_MEGAPIXELS   = 12      # MP — total pixel budget
-IMG_ASPECT_RATIO_MIN = 0.25    # width/height — rejects landscape crops
-IMG_ASPECT_RATIO_MAX = 1.5     # width/height — rejects ultra-wide crops
-IMG_TARGET_LONG_SIDE = 1024    # px — normalize to this before inference
+IMG_MIN_DIMENSION    = 200     # px â€” shorter side minimum
+IMG_MAX_DIMENSION    = 4096    # px â€” longer side maximum
+IMG_MAX_MEGAPIXELS   = 12      # MP â€” total pixel budget
+IMG_ASPECT_RATIO_MIN = 0.25    # width/height â€” rejects landscape crops
+IMG_ASPECT_RATIO_MAX = 1.5     # width/height â€” rejects ultra-wide crops
+IMG_TARGET_LONG_SIDE = 1024    # px â€” normalize to this before inference
 
 def check_image_dimensions(img: np.ndarray, label: str = "image"):
     """Validate image dimensions and aspect ratio."""
@@ -281,10 +281,10 @@ def check_image_dimensions(img: np.ndarray, label: str = "image"):
     aspect      = w / h
 
     if short_side < IMG_MIN_DIMENSION:
-        return False, (f"{label} is too small ({w}×{h}px). "
+        return False, (f"{label} is too small ({w}Ã—{h}px). "
                        f"Minimum shorter side: {IMG_MIN_DIMENSION}px.")
     if long_side > IMG_MAX_DIMENSION:
-        return False, (f"{label} is too large ({w}×{h}px). "
+        return False, (f"{label} is too large ({w}Ã—{h}px). "
                        f"Maximum longer side: {IMG_MAX_DIMENSION}px.")
     if megapixels > IMG_MAX_MEGAPIXELS:
         return False, (f"{label} has too many pixels ({megapixels:.1f} MP). "
@@ -292,9 +292,9 @@ def check_image_dimensions(img: np.ndarray, label: str = "image"):
     if not (IMG_ASPECT_RATIO_MIN <= aspect <= IMG_ASPECT_RATIO_MAX):
         return False, (f"{label} has an unusual aspect ratio ({aspect:.2f}). "
                        f"Expected portrait or near-square (ratio "
-                       f"{IMG_ASPECT_RATIO_MIN}–{IMG_ASPECT_RATIO_MAX}).")
+                       f"{IMG_ASPECT_RATIO_MIN}â€“{IMG_ASPECT_RATIO_MAX}).")
 
-    logger.debug(f"{label} dimensions OK: {w}×{h}px, {megapixels:.2f}MP, ratio={aspect:.2f}")
+    logger.debug(f"{label} dimensions OK: {w}Ã—{h}px, {megapixels:.2f}MP, ratio={aspect:.2f}")
     return True, None
 
 def normalize_image(img: np.ndarray, label: str = "image") -> np.ndarray:
@@ -319,7 +319,7 @@ def normalize_image(img: np.ndarray, label: str = "image") -> np.ndarray:
             img = cv2.rotate(img, rotations[orientation])
             logger.debug(f"{label}: applied EXIF rotation (orientation={orientation})")
     except Exception:
-        pass  # piexif not installed or no EXIF — silently continue
+        pass  # piexif not installed or no EXIF â€” silently continue
 
     # 3. Downscale to target long side (never upscale)
     h, w = img.shape[:2]
@@ -329,7 +329,7 @@ def normalize_image(img: np.ndarray, label: str = "image") -> np.ndarray:
         new_w = int(round(w * scale))
         new_h = int(round(h * scale))
         img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
-        logger.debug(f"{label}: resized {w}×{h} → {new_w}×{new_h}")
+        logger.debug(f"{label}: resized {w}Ã—{h} â†’ {new_w}Ã—{new_h}")
 
     return img
 
@@ -394,7 +394,7 @@ class PoseValidator:
         # Check cache
         cached_result = cache.get(cache_key)
         if cached_result is not None:
-            logger.info(f"✓ Cache hit for pose validation: {cache_key}")
+            logger.info(f"âœ“ Cache hit for pose validation: {cache_key}")
             return cached_result
         
         # Cache miss - perform validation
@@ -403,7 +403,7 @@ class PoseValidator:
         
         # Cache the result (900 seconds = 15 minutes)
         cache.set(cache_key, result, timeout=900)
-        logger.info(f"✓ Cached pose validation result: {cache_key}")
+        logger.info(f"âœ“ Cached pose validation result: {cache_key}")
         
         return result
     
@@ -479,7 +479,7 @@ class PoseValidator:
             angle = self.calculate_angle(shoulder, hip, knee)
             is_accepted = angle >= self.WAIST_ANGLE_THRESHOLD
             
-            message = f"Front view: waist angle {angle:.1f}° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
+            message = f"Front view: waist angle {angle:.1f}Â° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
             
             return is_accepted, angle, message
             
@@ -527,7 +527,7 @@ class PoseValidator:
             is_accepted = angle >= self.WAIST_ANGLE_THRESHOLD
             
             side_name = "left" if use_left else "right"
-            message = f"Side view ({side_name}): waist angle {angle:.1f}° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
+            message = f"Side view ({side_name}): waist angle {angle:.1f}Â° - {'ACCEPTED' if is_accepted else 'REJECTED'}"
             
             return is_accepted, angle, message
             
@@ -1066,20 +1066,20 @@ class MeasurementCorrectionEngine:
             elif k in results and 'cm' in results[k]:
                 original[k] = results[k]['cm']
         
-        # FAT DISTRIBUTION → ROUTING (NO ADDITION FOR UNDERWEIGHT)
+        # FAT DISTRIBUTION â†’ ROUTING (NO ADDITION FOR UNDERWEIGHT)
         if bmi_category == "underweight":
             target = None
             logger.debug("BMI underweight - skipping fat distribution corrections")
         elif fat_distribution == "upper":
             target = "waist"
-            logger.debug("Fat distribution: upper → targeting waist")
+            logger.debug("Fat distribution: upper â†’ targeting waist")
         elif fat_distribution == "middle":
             target = "waist"
-            logger.debug("Fat distribution: middle → targeting waist")
+            logger.debug("Fat distribution: middle â†’ targeting waist")
         else:
             # 'even' or balanced
             target = "waist"
-            logger.debug("Fat distribution: even → targeting waist")
+            logger.debug("Fat distribution: even â†’ targeting waist")
         
         # BUILD GLOBAL SCALE (ALL MULTIPLICATIVE)
         scale = 1.0
@@ -1112,7 +1112,7 @@ class MeasurementCorrectionEngine:
                     results[target]['cm'] * 0.393701, 2
                 )
         
-        # SHOULDER TYPE → LOCAL ARMHOLE ADJUSTMENT
+        # SHOULDER TYPE â†’ LOCAL ARMHOLE ADJUSTMENT
         if (
             age_group != "teen"
             and bmi_category != "underweight"
@@ -1349,7 +1349,7 @@ class CompleteBodyMeasurementsCalculator:
             # Check cache
             cached_result = cache.get(cache_key)
             if cached_result is not None:
-                logger.info(f"✓ Cache hit for measurements: {cache_key}")
+                logger.info(f"âœ“ Cache hit for measurements: {cache_key}")
                 return cached_result
             
             # Cache miss - calculate measurements
@@ -1359,7 +1359,7 @@ class CompleteBodyMeasurementsCalculator:
             if result is not None:
                 # Cache the result (1800 seconds = 30 minutes)
                 cache.set(cache_key, result, timeout=1800)
-                logger.info(f"✓ Cached measurements: {cache_key}")
+                logger.info(f"âœ“ Cached measurements: {cache_key}")
             return result
             
             
@@ -1511,12 +1511,12 @@ class CompleteBodyMeasurementsCalculator:
                 return chest_circumference
         
         elif self.gender == 'female':
-            # ⭐ CRITICAL: MIDDLE-AGED SHORT-STATURE CORRECTION (Age 45-65, Height 150-160, Weight 55-65)
+            # â­ CRITICAL: MIDDLE-AGED SHORT-STATURE CORRECTION (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                 # Target: 38 inches = 96.52 cm
                 # If current is ~32-35 cm, we need to add ~62 cm
                 target_chest_cm = 95.89
-                logger.info(f"✓ Applying middle-aged correction: Setting chest to {target_chest_cm}cm (38 inches)")
+                logger.info(f"âœ“ Applying middle-aged correction: Setting chest to {target_chest_cm}cm (38 inches)")
                 return target_chest_cm
             
             # PETITE FEMALE CORRECTIONS (height < 152 cm)
@@ -1524,10 +1524,10 @@ class CompleteBodyMeasurementsCalculator:
                 if 55 <= self.weight <= 60:
                     return chest_circumference + 5.5
                 elif 50 <= self.weight < 55:
-                    # F-25-146-52: Young petite — target 30.49in (77.44cm)
-                    # Raw chest ~82.35cm → need -4.91cm to reach 77.44cm
+                    # F-25-146-52: Young petite â€” target 30.49in (77.44cm)
+                    # Raw chest ~82.35cm â†’ need -4.91cm to reach 77.44cm
                     if 20 <= self.age <= 30 and self.height < 150:
-                        logger.info(f"✓ adjust_chest_by_weight: F-25-146-52 (-4.91cm → ~77.44cm / 30.49in)")
+                        logger.info(f"âœ“ adjust_chest_by_weight: F-25-146-52 (-4.91cm â†’ ~77.44cm / 30.49in)")
                         return chest_circumference - 4.91
                     # F-45-146-51: raw ~85.67cm, target 34in (86.36cm)
                     if 43 <= self.age <= 50 and self.height < 150:
@@ -1540,14 +1540,14 @@ class CompleteBodyMeasurementsCalculator:
             
             # REGULAR HEIGHT FEMALES (height >= 152 cm)
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
-                logger.info(f"✓ adjust_chest_by_weight: F-47-164-76 correction (scale 1.1344)")
+                logger.info(f"âœ“ adjust_chest_by_weight: F-47-164-76 correction (scale 1.1344)")
                 return chest_circumference * 1.1299
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 return chest_circumference + 3.0
             
-            # F-20-157-57: raw ~82.33cm, target 33.5in (85.09cm) → +2.76
+            # F-20-157-57: raw ~82.33cm, target 33.5in (85.09cm) â†’ +2.76
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"✓ adjust_chest_by_weight: F-20-157-57 (+2.76cm → ~85.09cm / 33.5in)")
+                logger.info(f"âœ“ adjust_chest_by_weight: F-20-157-57 (+2.76cm â†’ ~85.09cm / 33.5in)")
                 return chest_circumference + 2.76
             # LEGACY RANGE-BASED CORRECTIONS
             if 90 < chest_circumference <= 95:
@@ -1567,14 +1567,14 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender != 'female':
             return waist_circumference
 
-        # ⭐ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
+        # â­ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
         if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
             # For this demographic, waist carries more weight
             # Target: 38 inches (96.52 cm) from typical raw ~84 cm
             # Scale factor: 1.149 (14.9% increase)
             scale_factor = 1.149
             adjusted_waist = waist_circumference * scale_factor
-            logger.info(f"✓ Adjusting waist for middle-aged demographic: {waist_circumference:.2f}cm × {scale_factor} = {adjusted_waist:.2f}cm")
+            logger.info(f"âœ“ Adjusting waist for middle-aged demographic: {waist_circumference:.2f}cm Ã— {scale_factor} = {adjusted_waist:.2f}cm")
             return adjusted_waist
 
         # PETITE FEMALE CORRECTIONS (height < 152 cm)
@@ -1583,13 +1583,13 @@ class CompleteBodyMeasurementsCalculator:
                 return waist_circumference + 5.5
             elif 50 <= self.weight < 55:
                 # F-25-146-52: target 31.2in (79.25cm)
-                # raw ~78.96cm, engine adds ~1.43cm → need -1.14cm here
+                # raw ~78.96cm, engine adds ~1.43cm â†’ need -1.14cm here
                 if 20 <= self.age <= 30 and self.height < 150:
-                    logger.info(f"✓ adjust_waist_by_weight_female: F-25-146-52 (-1.14cm → ~79.25cm / 31.2in)")
+                    logger.info(f"âœ“ adjust_waist_by_weight_female: F-25-146-52 (-1.14cm â†’ ~79.25cm / 31.2in)")
                     return waist_circumference - 1.14
                 # F-45-146-51: raw ~83.78cm, target 30in (76.20cm)
                 if 43 <= self.age <= 50 and self.height < 150:
-                    logger.info(f"✓ adjust_waist_by_weight_female: F-45-146-51 (-7.58cm)")
+                    logger.info(f"âœ“ adjust_waist_by_weight_female: F-45-146-51 (-7.58cm)")
                     return waist_circumference - 7.58
                 return waist_circumference + 3.5
             elif self.weight < 50:
@@ -1598,12 +1598,12 @@ class CompleteBodyMeasurementsCalculator:
                 return waist_circumference + 4.0
         
         # REGULAR HEIGHT FEMALES
-        # F-20-157-57: raw ~66.93cm, target after engine = 68.58cm (27in) → raw needs +0.22
+        # F-20-157-57: raw ~66.93cm, target after engine = 68.58cm (27in) â†’ raw needs +0.22
         if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-            logger.info(f"✓ adjust_waist_by_weight_female: F-20-157-57 (+0.22cm → ~68.58cm / 27in)")
+            logger.info(f"âœ“ adjust_waist_by_weight_female: F-20-157-57 (+0.22cm â†’ ~68.58cm / 27in)")
             return waist_circumference + 0.22
         if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
-            logger.info(f"✓ adjust_waist_by_weight_female: F-47-164-76 correction (scale 1.108)")
+            logger.info(f"âœ“ adjust_waist_by_weight_female: F-47-164-76 correction (scale 1.108)")
             return waist_circumference * 1.365
         if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
             return waist_circumference + 4.0
@@ -1659,27 +1659,27 @@ class CompleteBodyMeasurementsCalculator:
                 return hip_circumference
         
         if self.gender == 'female':
-            # F-25-146-52: Young petite — target 38.3in (97.28cm)
-            # Raw hip ~89.39cm → need +7.89cm
+            # F-25-146-52: Young petite â€” target 38.3in (97.28cm)
+            # Raw hip ~89.39cm â†’ need +7.89cm
             if 20 <= self.age <= 30 and self.height < 150 and 50 <= self.weight < 55:
-                logger.info(f"✓ adjust_hips_weight: F-25-146-52 (+7.89cm → ~97.28cm / 38.3in)")
+                logger.info(f"âœ“ adjust_hips_weight: F-25-146-52 (+7.89cm â†’ ~97.28cm / 38.3in)")
                 return hip_circumference + 7.89
             # F-45-146-51: petite correction
             if 43 <= self.age <= 50 and self.height < 150 and 50 <= self.weight < 55:
-                logger.info(f"✓ adjust_hips_weight: F-45-146-51 (+2.69cm)")
+                logger.info(f"âœ“ adjust_hips_weight: F-45-146-51 (+2.69cm)")
                 return hip_circumference + 2.69
-            # ⭐ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
+            # â­ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                 scale_factor = 1.16
                 adjusted_hip = hip_circumference * scale_factor
-                logger.info(f"✓ Adjusting hip for middle-aged demographic: {hip_circumference:.2f}cm × {scale_factor} = {adjusted_hip:.2f}cm")
+                logger.info(f"âœ“ Adjusting hip for middle-aged demographic: {hip_circumference:.2f}cm Ã— {scale_factor} = {adjusted_hip:.2f}cm")
                 return adjusted_hip
             
             # REGULAR HEIGHT FEMALES
             # REGULAR HEIGHT FEMALES
-            # F-20-157-57: raw ~78.96cm, target 37in (93.98cm) → +15.02cm
+            # F-20-157-57: raw ~78.96cm, target 37in (93.98cm) â†’ +15.02cm
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"✓ adjust_hips_weight: F-20-157-57 (+15.02cm → ~93.98cm / 37in)")
+                logger.info(f"âœ“ adjust_hips_weight: F-20-157-57 (+15.02cm â†’ ~93.98cm / 37in)")
                 return hip_circumference + 15.02
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 logger.info(f"adjust_hips_weight: F-47-164-76 correction (scale 1.10)")
@@ -1760,7 +1760,7 @@ class CompleteBodyMeasurementsCalculator:
                 elif 50 <= self.weight < 55:
                     # F-25-146-52: ratio already targets 15.2in, skip +1.8 delta
                     if 20 <= self.age <= 30 and self.height < 150:
-                        logger.info(f"✓ adjust_armhole_by_weight: F-25-146-52 pass-through")
+                        logger.info(f"âœ“ adjust_armhole_by_weight: F-25-146-52 pass-through")
                         return armhole_circumference
                     return armhole_circumference + 1.8
                 elif self.weight < 50:
@@ -1768,12 +1768,12 @@ class CompleteBodyMeasurementsCalculator:
                 else:
                     return armhole_circumference + 2.0
             
-            # F-20-157-57: base 37.99cm, target 17in (43.18cm) → +5.19cm
+            # F-20-157-57: base 37.99cm, target 17in (43.18cm) â†’ +5.19cm
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"✓ adjust_armhole_by_weight: F-20-157-57 (+5.19cm → ~43.18cm / 17in)")
+                logger.info(f"âœ“ adjust_armhole_by_weight: F-20-157-57 (+5.19cm â†’ ~43.18cm / 17in)")
                 return armhole_circumference + 5.19
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
-                logger.info(f"✓ adjust_armhole_by_weight: F-47-164-76 pass-through (base already correct)")
+                logger.info(f"âœ“ adjust_armhole_by_weight: F-47-164-76 pass-through (base already correct)")
                 return armhole_circumference
             elif self.bmi_category == 'underweight':
                 return armhole_circumference + 1
@@ -1797,7 +1797,7 @@ class CompleteBodyMeasurementsCalculator:
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                 reduction_factor = 0.858
                 adjusted_thigh = upper_thigh_circumference * reduction_factor
-                logger.info(f"✓ Adjusting upper thigh for middle-aged demographic: {upper_thigh_circumference:.2f}cm × {reduction_factor} = {adjusted_thigh:.2f}cm")
+                logger.info(f"âœ“ Adjusting upper thigh for middle-aged demographic: {upper_thigh_circumference:.2f}cm Ã— {reduction_factor} = {adjusted_thigh:.2f}cm")
                 return adjusted_thigh   
             # PETITE FEMALE CORRECTIONS (height < 152 cm)
             if self.height < 152:
@@ -1807,7 +1807,7 @@ class CompleteBodyMeasurementsCalculator:
                 elif 50 <= self.weight < 55:
                     # F-25-146-52: thigh ratio in calc already targets 70.26cm, no extra delta
                     if 20 <= self.age <= 30 and self.height < 150:
-                        logger.info(f"✓ adjust_upper_thigh_by_weight: F-25-146-52 pass-through")
+                        logger.info(f"âœ“ adjust_upper_thigh_by_weight: F-25-146-52 pass-through")
                         return upper_thigh_circumference
                     return upper_thigh_circumference - 1.5  # Was -5.0, now -1.0
                 elif self.weight < 50:
@@ -1836,13 +1836,13 @@ class CompleteBodyMeasurementsCalculator:
                 return knee_circumference
         
         if self.gender == 'female':
-            # ⭐ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
+            # â­ MIDDLE-AGED SHORT-STATURE LOGIC (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                 # For this demographic, apply minimal adjustment to reach ~17 inches
                 # Changed to 1.0 (no adjustment) to keep the base calculation
                 adjustment_factor = 1.0
                 adjusted_knee = knee_circumference * adjustment_factor
-                logger.info(f"✓ Adjusting knee for middle-aged demographic: {knee_circumference:.2f}cm × {adjustment_factor} = {adjusted_knee:.2f}cm")
+                logger.info(f"âœ“ Adjusting knee for middle-aged demographic: {knee_circumference:.2f}cm Ã— {adjustment_factor} = {adjusted_knee:.2f}cm")
                 return adjusted_knee
             
             # PETITE FEMALE CORRECTIONS (height < 152)
@@ -1851,13 +1851,13 @@ class CompleteBodyMeasurementsCalculator:
                     return knee_circumference + 0.0
                 elif 50 <= self.weight < 55:
                     # F-25-146-52: target 17.40in (44.20cm)
-                    # thigh ~70.26cm × ratio from calc → knee base, adjust to reach 44.20cm
+                    # thigh ~70.26cm Ã— ratio from calc â†’ knee base, adjust to reach 44.20cm
                     if 20 <= self.age <= 30 and self.height < 150:
-                        logger.info(f"✓ adjust_knee_by_weight: F-25-146-52 pass-through (ratio handles it)")
+                        logger.info(f"âœ“ adjust_knee_by_weight: F-25-146-52 pass-through (ratio handles it)")
                         return knee_circumference  # ratio in calc_all already targets correctly
                     # F-45-146-51: target 17.8in (45.21cm)
                     if 43 <= self.age <= 50 and self.height < 150:
-                        logger.info(f"✓ adjust_knee_by_weight: F-45-146-51 (+3.04cm)")
+                        logger.info(f"âœ“ adjust_knee_by_weight: F-45-146-51 (+3.04cm)")
                         return knee_circumference + 3.04
                     return knee_circumference - 0.5
                 elif self.weight < 50:
@@ -1867,9 +1867,9 @@ class CompleteBodyMeasurementsCalculator:
             
             # REGULAR HEIGHT FEMALES
             # REGULAR HEIGHT FEMALES
-            # F-20-157-57: base ~47.93cm, target 19.5in (49.53cm) → +1.60cm
+            # F-20-157-57: base ~47.93cm, target 19.5in (49.53cm) â†’ +1.60cm
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"✓ adjust_knee_by_weight: F-20-157-57 (+1.60cm → ~49.53cm / 19.5in)")
+                logger.info(f"âœ“ adjust_knee_by_weight: F-20-157-57 (+1.60cm â†’ ~49.53cm / 19.5in)")
                 return knee_circumference + 1.60
             if 49.0 <= self.weight <= 49.6 and 158.0 <= self.height <= 159.0:
                 return knee_circumference - 7.24
@@ -1934,7 +1934,7 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'male':
             ratio = 0.36   # anatomical / full arm
         else:
-            # FEMALE – tailoring sleeve length
+            # FEMALE â€“ tailoring sleeve length
             if self.height < 150:
                 ratio = 0.25
             elif 150 <= self.height <= 155:
@@ -2033,17 +2033,17 @@ class CompleteBodyMeasurementsCalculator:
                 elif self.weight < 55:
                     # F-25-146-52: upper ~31.20in (79.25cm), lower ~27.34in (69.44cm)
                     # full_chest after Change 1 = ~77.44cm
-                    # ratios: upper=79.25/77.44=1.0234 → clamp to full_chest (use fixed values)
+                    # ratios: upper=79.25/77.44=1.0234 â†’ clamp to full_chest (use fixed values)
                     #         lower=69.44/77.44=0.8967
                     if 20 <= self.age <= 30 and self.height < 150:
                         upper_chest_cm = full_chest_cm * 1.023   # ~79.25cm (31.20in)
                         lower_chest_cm = full_chest_cm * 0.897   # ~69.44cm (27.34in)
-                        logger.info(f"✓ Upper/lower chest ratios: F-25-146-52 (1.023 / 0.897)")
+                        logger.info(f"âœ“ Upper/lower chest ratios: F-25-146-52 (1.023 / 0.897)")
                     # F-45-146-51: upper target 32in (81.28cm), lower 30in (76.20cm)
                     elif 43 <= self.age <= 50 and self.height < 150:
                         upper_chest_cm = full_chest_cm * 0.9412
                         lower_chest_cm = full_chest_cm * 0.8824
-                        logger.info(f"✓ Upper/lower chest ratios: F-45-146-51 (0.9412 / 0.8824)")
+                        logger.info(f"âœ“ Upper/lower chest ratios: F-45-146-51 (0.9412 / 0.8824)")
                     else:
                         upper_chest_cm = full_chest_cm * 0.94
                         lower_chest_cm = full_chest_cm * 0.88
@@ -2053,18 +2053,18 @@ class CompleteBodyMeasurementsCalculator:
             else:
                 # REGULAR HEIGHT FEMALES
                 
-                # ⭐ MIDDLE-AGED SHORT-STATURE CORRECTION
+                # â­ MIDDLE-AGED SHORT-STATURE CORRECTION
                 if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                     # Target: Upper=37 inches (93.98cm), Lower=36 inches (91.44cm)
                     # From Full=96.52cm
                     upper_chest_cm = 93.20  # 37 inches
                     lower_chest_cm = 90.80  # 36 inches
-                    logger.info(f"✓ Setting upper_chest={upper_chest_cm}cm (37in), lower_chest={lower_chest_cm}cm (36in)")
+                    logger.info(f"âœ“ Setting upper_chest={upper_chest_cm}cm (37in), lower_chest={lower_chest_cm}cm (36in)")
                 # Specific correction for height 160-170 cm and weight 50-55 kg
                 elif 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                    upper_chest_cm = full_chest_cm * 0.985   # 85.09 × 0.985 = 83.81cm (33.0in)
-                    lower_chest_cm = full_chest_cm * 0.806   # 85.09 × 0.806 = 68.58cm (27.0in)
-                    logger.info(f"✓ Upper/lower chest ratios: F-20-157-57 (0.985 / 0.806)")
+                    upper_chest_cm = full_chest_cm * 0.985   # 85.09 Ã— 0.985 = 83.81cm (33.0in)
+                    lower_chest_cm = full_chest_cm * 0.806   # 85.09 Ã— 0.806 = 68.58cm (27.0in)
+                    logger.info(f"âœ“ Upper/lower chest ratios: F-20-157-57 (0.985 / 0.806)")
                 elif 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                     upper_chest_cm = full_chest_cm * 0.97
                     lower_chest_cm = full_chest_cm * 0.853
@@ -2072,7 +2072,7 @@ class CompleteBodyMeasurementsCalculator:
                 elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                     upper_chest_cm = full_chest_cm * 0.933
                     lower_chest_cm = full_chest_cm * 0.880
-                    logger.info(f"✓ Upper/lower chest ratios: F-47-164-76 (0.933 / 0.880)")
+                    logger.info(f"âœ“ Upper/lower chest ratios: F-47-164-76 (0.933 / 0.880)")
                 else:
                     upper_chest_cm = full_chest_cm * 0.92
                     lower_chest_cm = full_chest_cm * 0.82
@@ -2120,18 +2120,18 @@ class CompleteBodyMeasurementsCalculator:
         fit_preference=self.fit_preference
         )
 
-        # Calculate arm hole circumference (chest × 0.42)
+        # Calculate arm hole circumference (chest Ã— 0.42)
         chest_cm = results['chest']['circumference']['cm']
         
         # NEW: Adjusted ratio for specific height/weight range
         # NEW: Adjusted ratio for specific height/weight range
         if self.gender == 'female' and 160 <= self.height <= 170 and 50 <= self.weight <= 55:
             armhole_cm = chest_cm * 0.47  # Increased from 0.44 to 0.47
-        # F-25-146-52: target 15.2in (38.61cm) — ratio bypasses adjust (+1.8) via pass-through below
+        # F-25-146-52: target 15.2in (38.61cm) â€” ratio bypasses adjust (+1.8) via pass-through below
         elif (self.gender == 'female' and 20 <= self.age <= 30 and
               self.height < 150 and 50 <= self.weight < 55):
-            armhole_cm = chest_cm * 0.499  # 77.44 × 0.499 = 38.64cm = 15.21in
-            logger.info(f"✓ Armhole ratio F-25-146-52: 0.499 → ~{chest_cm*0.499:.1f}cm (15.2in)")
+            armhole_cm = chest_cm * 0.499  # 77.44 Ã— 0.499 = 38.64cm = 15.21in
+            logger.info(f"âœ“ Armhole ratio F-25-146-52: 0.499 â†’ ~{chest_cm*0.499:.1f}cm (15.2in)")
         else:
             armhole_cm = chest_cm * (0.42 if self.gender == 'male' else 0.44)
         
@@ -2152,20 +2152,20 @@ class CompleteBodyMeasurementsCalculator:
         else:  # female
             # NEW: Specific correction for height 160-170 cm and weight 50-55 kg
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
-                thigh_cm = hip_cm * 0.619  # Adjusted ratio (42 * 0.619 ≈ 26)
+                thigh_cm = hip_cm * 0.619  # Adjusted ratio (42 * 0.619 â‰ˆ 26)
             elif self.height < 152:
                 if 55 <= self.weight <= 60:
                     thigh_cm = hip_cm * 0.50
                 elif self.weight < 55:
                     # F-25-146-52: target 27.66in (70.26cm)
-                    # hip after Change 3 = ~97.28cm → ratio = 70.26/97.28 = 0.722
+                    # hip after Change 3 = ~97.28cm â†’ ratio = 70.26/97.28 = 0.722
                     if 20 <= self.age <= 30 and self.height < 150:
                         thigh_cm = hip_cm * 0.722
-                        logger.info(f"✓ Upper thigh ratio F-25-146-52: 0.722 → ~{hip_cm*0.722:.1f}cm (27.66in)")
+                        logger.info(f"âœ“ Upper thigh ratio F-25-146-52: 0.722 â†’ ~{hip_cm*0.722:.1f}cm (27.66in)")
                     # F-45-146-51: target 17.5in (44.45cm), pre-adjust ratio
                     elif 43 <= self.age <= 50 and self.height < 150:
                         thigh_cm = hip_cm * 0.476
-                        logger.info(f"✓ Upper thigh ratio F-45-146-51: 0.476")
+                        logger.info(f"âœ“ Upper thigh ratio F-45-146-51: 0.476")
                     else:
                         thigh_cm = hip_cm * 0.48
                 else:
@@ -2175,10 +2175,10 @@ class CompleteBodyMeasurementsCalculator:
             elif self.bmi_category == 'normal' and self.height == 158.4:
                 thigh_cm = hip_cm * 0.76
             # FEMALE: Age ~47, Height ~164.5cm, Weight ~75.85kg
-            # hip ~44in → upper thigh target 29in → ratio 29/44 = 0.659
+            # hip ~44in â†’ upper thigh target 29in â†’ ratio 29/44 = 0.659
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 thigh_cm = hip_cm * 0.659
-                logger.info(f"✓ Upper thigh ratio: F-47-164-76 (0.659 of hip)")
+                logger.info(f"âœ“ Upper thigh ratio: F-47-164-76 (0.659 of hip)")
             else:  # overweight / obese
                 thigh_cm = hip_cm * 0.68
         thigh_cm = self.adjust_upper_thigh_by_weight(thigh_cm)
@@ -2196,12 +2196,12 @@ class CompleteBodyMeasurementsCalculator:
         if self.gender == 'male':
             knee_cm = upper_thigh_cm * 0.72
         else:  # female
-            # ⭐ MIDDLE-AGED SHORT-STATURE CORRECTION (Age 45-65, Height 150-160, Weight 55-65)
+            # â­ MIDDLE-AGED SHORT-STATURE CORRECTION (Age 45-65, Height 150-160, Weight 55-65)
             if 45 <= self.age <= 65 and 150 <= self.height <= 160 and 55 <= self.weight <= 65:
                 # Target: 17 inches (43.18 cm)
                 # Adjusted ratio to 0.66 to account for subsequent adjustment
                 knee_cm = upper_thigh_cm * 0.66
-                logger.info(f"✓ Calculating knee for middle-aged demographic: {upper_thigh_cm:.2f}cm × 0.66 = {knee_cm:.2f}cm")
+                logger.info(f"âœ“ Calculating knee for middle-aged demographic: {upper_thigh_cm:.2f}cm Ã— 0.66 = {knee_cm:.2f}cm")
             # Specific correction for height 160-170 cm and weight 50-55 kg
             elif 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 knee_cm = upper_thigh_cm * 0.654
@@ -2212,17 +2212,17 @@ class CompleteBodyMeasurementsCalculator:
                     knee_cm = upper_thigh_cm * 1.0
                 elif self.weight < 55:
                     # F-25-146-52: target 17.60in (44.70cm)
-                    # upper_thigh ~70.26cm → ratio = 44.70/70.26 = 0.636
+                    # upper_thigh ~70.26cm â†’ ratio = 44.70/70.26 = 0.636
                     if 20 <= self.age <= 30 and self.height < 150:
                         knee_cm = upper_thigh_cm * 0.636
-                        logger.info(f"✓ Knee ratio F-25-146-52: 0.636 → ~{upper_thigh_cm*0.636:.1f}cm (17.60in)")
+                        logger.info(f"âœ“ Knee ratio F-25-146-52: 0.636 â†’ ~{upper_thigh_cm*0.636:.1f}cm (17.60in)")
                     else:
                         knee_cm = upper_thigh_cm * 0.98
                 else:
                     knee_cm = upper_thigh_cm * 0.99
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 knee_cm = upper_thigh_cm * 0.722
-                logger.info(f"✓ Knee ratio F-47-164-76: {upper_thigh_cm:.2f}cm × 0.722 = {knee_cm:.2f}cm")
+                logger.info(f"âœ“ Knee ratio F-47-164-76: {upper_thigh_cm:.2f}cm Ã— 0.722 = {knee_cm:.2f}cm")
             else:
                 knee_cm = upper_thigh_cm * 0.75
 
@@ -2240,19 +2240,19 @@ class CompleteBodyMeasurementsCalculator:
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 body_ratio = 0.088 
             elif self.height < 150:
-                # F-25-146-52: target 14.3in (36.32cm) → 36.32/146.304 = 0.2483
+                # F-25-146-52: target 14.3in (36.32cm) â†’ 36.32/146.304 = 0.2483
                 if 20 <= self.age <= 30 and 50 <= self.weight < 55:
                     body_ratio = 0.2483
-                    logger.info(f"✓ Body length ratio F-25-146-52: 0.2483 → ~{146.304*0.2483:.1f}cm (14.3in)")
-                # F-45-146-51: target 13.3in (33.78cm) → 33.78/146.8 = 0.2301
+                    logger.info(f"âœ“ Body length ratio F-25-146-52: 0.2483 â†’ ~{146.304*0.2483:.1f}cm (14.3in)")
+                # F-45-146-51: target 13.3in (33.78cm) â†’ 33.78/146.8 = 0.2301
                 elif 43 <= self.age <= 50 and 50 <= self.weight < 55:
                     body_ratio = 0.2301
-                    logger.info(f"✓ Body length ratio F-45-146-51: 0.2301")
+                    logger.info(f"âœ“ Body length ratio F-45-146-51: 0.2301")
                 else:
                     body_ratio = 0.22
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 body_ratio = 0.2208
-                logger.info(f"✓ Body length ratio F-47-164-76: 0.2208")
+                logger.info(f"âœ“ Body length ratio F-47-164-76: 0.2208")
             elif self.height <= 165:
                 body_ratio = 0.235
             else:
@@ -2343,7 +2343,7 @@ class CompleteBodyMeasurementsCalculator:
             158 <= self.height <= 165 and
             65 <= self.weight <= 72):
             
-            logger.info(f"✓ Applying Targeted Correction: Age {self.age}, "
+            logger.info(f"âœ“ Applying Targeted Correction: Age {self.age}, "
                        f"Height {self.height}cm, Weight {self.weight}kg")
             
             targets = {
@@ -2366,7 +2366,7 @@ class CompleteBodyMeasurementsCalculator:
                     if abs(diff) > tolerance:
                         results[measurement_name]['circumference']['cm'] = round(target_cm, 2)
                         results[measurement_name]['circumference']['inches'] = round(target_cm * 0.393701, 2)
-                        logger.info(f"  {measurement_name.upper()}: {current_cm:.2f}cm → {target_cm:.2f}cm")
+                        logger.info(f"  {measurement_name.upper()}: {current_cm:.2f}cm â†’ {target_cm:.2f}cm")
 
         return results
 
@@ -2387,7 +2387,7 @@ def process_image_to_mesh(img_path, output_path, model, detector, renderer, mode
     cached_mesh_data = cache.get(cache_key)
     
     if cached_mesh_data is not None:
-        logger.info(f"✓ Cache hit for HMR2 mesh: {cache_key}")
+        logger.info(f"âœ“ Cache hit for HMR2 mesh: {cache_key}")
         try:
             # Write cached mesh data to output file
             with open(output_path, 'w') as f:
@@ -2406,7 +2406,7 @@ def process_image_to_mesh(img_path, output_path, model, detector, renderer, mode
             with open(result_path, 'r') as f:
                 mesh_data = f.read()
             cache.set(cache_key, mesh_data, timeout=3600)  # 60 minutes
-            logger.info(f"✓ Cached HMR2 mesh: {cache_key}")
+            logger.info(f"âœ“ Cached HMR2 mesh: {cache_key}")
         except Exception as e:
             logger.warning(f"Failed to cache mesh: {e}")
     
@@ -2634,7 +2634,7 @@ def download_tryon(filename):
 def process():
     req_id = new_request_id()
     timer = StageTimer(req_id)
-    logger.info(f"[{req_id}] ══ /process request received ══")
+    logger.info(f"[{req_id}] â•â• /process request received â•â•")
     summary_logged = False
     front_path = None
     side_path = None
@@ -2645,27 +2645,91 @@ def process():
             logger.debug("HMR2 model not installed.")
             return jsonify({'success': False, 'error': 'HMR2 model is not installed.'})
         
-        # ===== EXTRACT ALL FORM DATA =====
-        gender = request.form.get('gender', 'male')
-        height = float(request.form.get('height', 170))
-        height_unit = request.form.get('height_unit', 'cm')
-        weight = float(request.form.get('weight', 70))
-        weight_unit = request.form.get('weight_unit', 'kg')
-        
-        # Convert units
+        def bad_request(code, error):
+            logger.warning(f"[{req_id}] {code}: {error}")
+            return jsonify({
+                'success': False,
+                'code': code,
+                'error': error,
+                'request_id': req_id
+            }), 400
+
+        # ===== STRICT INPUT SCHEMA VALIDATION =====
+        allowed_genders = {'male', 'female'}
+        allowed_height_units = {'cm', 'm'}
+        allowed_weight_units = {'kg', 'lbs'}
+        allowed_body_types = {'slim', 'avg', 'athletic', 'heavy', 'curvy'}
+        allowed_age_groups = {'teen', 'adult', 'middle_age', 'senior'}
+        allowed_fat_distribution = {'upper', 'middle', 'lower', 'even'}
+        allowed_muscle_levels = {'low', 'moderate', 'high', 'very_high'}
+        allowed_activity_levels = {'sedentary', 'light', 'moderate', 'active', 'very_active'}
+        allowed_shoulder_types = {'narrow', 'average', 'broad', 'very_broad'}
+        allowed_measurement_goals = {'health', 'clothing', 'fitness', 'general'}
+        allowed_fit_preferences = {'tight', 'regular', 'loose', 'oversized'}
+
+        gender = (request.form.get('gender') or '').strip().lower()
+        if not gender:
+            return bad_request('MISSING_GENDER', "Missing required field 'gender'.")
+        if gender not in allowed_genders:
+            return bad_request('INVALID_GENDER', "Invalid 'gender'. Allowed: male, female.")
+
+        height_raw = (request.form.get('height') or '').strip()
+        if not height_raw:
+            return bad_request('MISSING_HEIGHT', "Missing required field 'height'.")
+        try:
+            height = float(height_raw)
+        except ValueError:
+            return bad_request('INVALID_HEIGHT_FORMAT', "Invalid 'height'. Must be a number.")
+
+        height_unit = (request.form.get('height_unit') or '').strip().lower()
+        if not height_unit:
+            return bad_request('MISSING_HEIGHT_UNIT', "Missing required field 'height_unit'.")
+        if height_unit not in allowed_height_units:
+            return bad_request('INVALID_HEIGHT_UNIT', "Invalid 'height_unit'. Allowed: cm, m.")
         if height_unit == 'm':
-            height = height * 100
+            height = height * 100.0
+        if not (100.0 <= height <= 250.0):
+            return bad_request('INVALID_HEIGHT_RANGE', "Height must be between 100 and 250 cm.")
+
+        weight_raw = (request.form.get('weight') or '').strip()
+        if not weight_raw:
+            return bad_request('MISSING_WEIGHT', "Missing required field 'weight'.")
+        try:
+            weight = float(weight_raw)
+        except ValueError:
+            return bad_request('INVALID_WEIGHT_FORMAT', "Invalid 'weight'. Must be a number.")
+
+        weight_unit = (request.form.get('weight_unit') or '').strip().lower()
+        if not weight_unit:
+            return bad_request('MISSING_WEIGHT_UNIT', "Missing required field 'weight_unit'.")
+        if weight_unit not in allowed_weight_units:
+            return bad_request('INVALID_WEIGHT_UNIT', "Invalid 'weight_unit'. Allowed: kg, lbs.")
         if weight_unit == 'lbs':
             weight = weight * 0.453592
-        
-        # Get body type and age
-        body_type = request.form.get('body_type', None)
-        age = int(request.form.get('age', 25))
-        
-        # ===== NEW CORRECTION PARAMETERS =====
-        # Age group (from frontend or calculate from age)
-        age_group = request.form.get('age_group')
-        if not age_group:
+        if not (30.0 <= weight <= 300.0):
+            return bad_request('INVALID_WEIGHT_RANGE', "Weight must be between 30 and 300 kg.")
+
+        age_raw = (request.form.get('age') or '').strip()
+        if not age_raw:
+            return bad_request('MISSING_AGE', "Missing required field 'age'.")
+        try:
+            age = int(age_raw)
+        except ValueError:
+            return bad_request('INVALID_AGE_FORMAT', "Invalid 'age'. Must be an integer.")
+        if not (5 <= age <= 120):
+            return bad_request('INVALID_AGE_RANGE', "Age must be between 5 and 120 years.")
+
+        body_type = (request.form.get('body_type') or '').strip().lower()
+        if not body_type:
+            return bad_request('MISSING_BODY_TYPE', "Missing required field 'body_type'.")
+        if body_type not in allowed_body_types:
+            return bad_request('INVALID_BODY_TYPE', "Invalid 'body_type'.")
+
+        age_group = (request.form.get('age_group') or '').strip().lower()
+        if age_group:
+            if age_group not in allowed_age_groups:
+                return bad_request('INVALID_AGE_GROUP', "Invalid 'age_group'.")
+        else:
             if age < 18:
                 age_group = 'teen'
             elif age < 45:
@@ -2674,15 +2738,43 @@ def process():
                 age_group = 'middle_age'
             else:
                 age_group = 'senior'
-        
-        # Get all correction parameters with defaults
-        fat_distribution = request.form.get('fat_distribution', 'even')
-        muscle_level = request.form.get('muscle_level', 'moderate')
-        activity_level = request.form.get('activity_level', 'moderate')
-        shoulder_type = request.form.get('shoulder_type', 'average')
-        measurement_goal = request.form.get('measurement_goal', 'clothing')
-        fit_preference = request.form.get('fit_preference', 'regular')
-        
+
+        fat_distribution = (request.form.get('fat_distribution') or '').strip().lower()
+        if not fat_distribution:
+            return bad_request('MISSING_FAT_DISTRIBUTION', "Missing required field 'fat_distribution'.")
+        if fat_distribution not in allowed_fat_distribution:
+            return bad_request('INVALID_FAT_DISTRIBUTION', "Invalid 'fat_distribution'.")
+
+        muscle_level = (request.form.get('muscle_level') or '').strip().lower()
+        if not muscle_level:
+            return bad_request('MISSING_MUSCLE_LEVEL', "Missing required field 'muscle_level'.")
+        if muscle_level not in allowed_muscle_levels:
+            return bad_request('INVALID_MUSCLE_LEVEL', "Invalid 'muscle_level'.")
+
+        activity_level = (request.form.get('activity_level') or '').strip().lower()
+        if not activity_level:
+            return bad_request('MISSING_ACTIVITY_LEVEL', "Missing required field 'activity_level'.")
+        if activity_level not in allowed_activity_levels:
+            return bad_request('INVALID_ACTIVITY_LEVEL', "Invalid 'activity_level'.")
+
+        shoulder_type = (request.form.get('shoulder_type') or '').strip().lower()
+        if not shoulder_type:
+            return bad_request('MISSING_SHOULDER_TYPE', "Missing required field 'shoulder_type'.")
+        if shoulder_type not in allowed_shoulder_types:
+            return bad_request('INVALID_SHOULDER_TYPE', "Invalid 'shoulder_type'.")
+
+        measurement_goal = (request.form.get('measurement_goal') or '').strip().lower()
+        if not measurement_goal:
+            return bad_request('MISSING_MEASUREMENT_GOAL', "Missing required field 'measurement_goal'.")
+        if measurement_goal not in allowed_measurement_goals:
+            return bad_request('INVALID_MEASUREMENT_GOAL', "Invalid 'measurement_goal'.")
+
+        fit_preference = (request.form.get('fit_preference') or '').strip().lower()
+        if not fit_preference:
+            return bad_request('MISSING_FIT_PREFERENCE', "Missing required field 'fit_preference'.")
+        if fit_preference not in allowed_fit_preferences:
+            return bad_request('INVALID_FIT_PREFERENCE', "Invalid 'fit_preference'.")
+
         logger.info(f"Processing with correction params - Age Group: {age_group}, "
                    f"Fat Dist: {fat_distribution}, Muscle: {muscle_level}, "
                    f"Activity: {activity_level}, Shoulder: {shoulder_type}, "
@@ -2710,13 +2802,13 @@ def process():
             if front_img is None:
                 return jsonify({'success': False, 'error': err})
             cv2.imwrite(front_path, front_img)
-            logger.info(f"[{req_id}] Front saved: {front_img.shape[1]}×{front_img.shape[0]}px")
+            logger.info(f"[{req_id}] Front saved: {front_img.shape[1]}Ã—{front_img.shape[0]}px")
 
             side_img, err = validate_and_normalize_upload(side_file, label="Side image")
             if side_img is None:
                 return jsonify({'success': False, 'error': err})
             cv2.imwrite(side_path, side_img)
-            logger.info(f"[{req_id}] Side saved: {side_img.shape[1]}×{side_img.shape[0]}px") 
+            logger.info(f"[{req_id}] Side saved: {side_img.shape[1]}Ã—{side_img.shape[0]}px") 
 
         # ===== POSE VALIDATION =====
         if MEDIAPIPE_AVAILABLE:
@@ -2731,38 +2823,38 @@ def process():
                         if not validation_results['front_accepted']:
                             if validation_results['front_angle'] is not None:
                                 error_messages.append(
-                                    f"❌ Front image: Person appears to be bending. "
+                                    f"âŒ Front image: Person appears to be bending. "
                                     f"Please upload a front image where you're standing straight with arms by your sides."
                                 )
                             else:
                                 error_messages.append(
-                                    f"❌ Front image: {validation_results['front_message']}"
+                                    f"âŒ Front image: {validation_results['front_message']}"
                                 )
 
                         if not validation_results['side_accepted']:
                             if validation_results['side_angle'] is not None:
                                 error_messages.append(
-                                    f"❌ Side image: Person appears to be bending. "
-                                    f"Detected waist angle: {validation_results['side_angle']:.1f}° "
-                                    f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}°). "
+                                    f"âŒ Side image: Person appears to be bending. "
+                                    f"Detected waist angle: {validation_results['side_angle']:.1f}Â° "
+                                    f"(minimum required: {PoseValidator.WAIST_ANGLE_THRESHOLD}Â°). "
                                     f"Please upload a side image where you're standing straight."
                                 )
                             else:
                                 error_messages.append(
-                                    f"❌ Side image: {validation_results['side_message']}"
+                                    f"âŒ Side image: {validation_results['side_message']}"
                                 )
 
                         if validation_results['errors']:
                             for err in validation_results['errors']:
                                 if err not in str(error_messages):
-                                    error_messages.append(f"⚠️ {err}")
+                                    error_messages.append(f"âš ï¸ {err}")
 
                         error_message = "\n\n".join(error_messages)
-                        error_message += "\n\n💡 Tips for better results:\n" \
-                                        "• Stand upright with your back straight\n" \
-                                        "• Keep arms relaxed at your sides\n" \
-                                        "• Ensure full body is visible in frame\n" \
-                                        "• Use good lighting and clear background"
+                        error_message += "\n\nðŸ’¡ Tips for better results:\n" \
+                                        "â€¢ Stand upright with your back straight\n" \
+                                        "â€¢ Keep arms relaxed at your sides\n" \
+                                        "â€¢ Ensure full body is visible in frame\n" \
+                                        "â€¢ Use good lighting and clear background"
 
                         logger.debug("Pose validation failed.")
                         return jsonify({
@@ -2771,7 +2863,7 @@ def process():
                             'validation_details': validation_results
                         })
 
-                    logger.debug("✓ Pose validation passed for both images")
+                    logger.debug("âœ“ Pose validation passed for both images")
                 except Exception as e:
                     logger.warning(f"[{req_id}] Pose validation error: {str(e)}")
         
@@ -2806,7 +2898,7 @@ def process():
                     front_result = front_future.result(timeout=300)
                     side_result = side_future.result(timeout=300)
                 except queue.Full as e:
-                    logger.warning(f"[{req_id}] Inference queue full — rejecting request")
+                    logger.warning(f"[{req_id}] Inference queue full â€” rejecting request")
                     return jsonify({'success': False, 'error': 'Server is busy. Please try again in a moment.'}), 503
                 except TimeoutError as e:
                     logger.error(f"[{req_id}] Inference timeout: {str(e)}")
@@ -2828,7 +2920,7 @@ def process():
                     'error': 'Could not detect a person in the side image.'
                 })
             
-            logger.debug("✓ Both images processed successfully!")
+            logger.debug("âœ“ Both images processed successfully!")
         
         # ===== CALCULATE MEASUREMENTS WITH NEW CORRECTION ENGINE =====
         with timer.stage("measurement_calc"):
@@ -2856,7 +2948,7 @@ def process():
                 'error': 'Error calculating measurements from the 3D models.'
             })
         
-        logger.debug("✓ Measurements calculated successfully!")
+        logger.debug("âœ“ Measurements calculated successfully!")
         
         with timer.stage("cleanup"):
             for f in [front_path, side_path, front_obj, side_obj]:
@@ -2923,3 +3015,5 @@ def cache_stats():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
