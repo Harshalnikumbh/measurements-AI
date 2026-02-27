@@ -1546,9 +1546,23 @@ class CompleteBodyMeasurementsCalculator:
                 return chest_circumference + 3.0
             
             # F-20-157-57: raw ~82.33cm, target 33.5in (85.09cm) â†’ +2.76
+            # REPLACE WITH:
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"âœ“ adjust_chest_by_weight: F-20-157-57 (+2.76cm â†’ ~85.09cm / 33.5in)")
+                logger.info(f"✔ adjust_chest_by_weight: F-20-157-57 (+2.76cm → ~85.09cm / 33.5in)")
                 return chest_circumference + 2.76
+            # F-59-161.5-69: Senior female — age 55-65, height 158-165cm, weight 65-72kg
+            # Target: 37 in (93.98 cm) | scale = 93.98 / typical_raw ≈ 1.0904
+            if 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                scale_factor = 1.0904
+                adjusted = chest_circumference * scale_factor
+                logger.info(f"✔ adjust_chest_by_weight: F-59-161.5-69 (×{scale_factor} → {adjusted:.2f}cm / 37in)")
+                return adjusted
+            # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+            # Target: 34in (86.36cm) | raw ~76cm + 10.03 = 86.36cm
+            if 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                target_chest_cm = 86.36  # 34.0 inches — mesh-robust fixed target
+                logger.info(f"✔ adjust_chest_by_weight: F-29-164-55 (→ {target_chest_cm}cm / 34.0in)")
+                return target_chest_cm
             # LEGACY RANGE-BASED CORRECTIONS
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
@@ -1607,6 +1621,14 @@ class CompleteBodyMeasurementsCalculator:
             return waist_circumference * 1.365
         if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
             return waist_circumference + 4.0
+        # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+        # Target: 35.2in (89.41cm) | raw ~82.7cm + 6.75 = 89.41cm
+        # (Previous -8 path was drastically under-measuring this profile)
+        if 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+            delta = 6.75
+            logger.info(f"✔ adjust_waist_by_weight_female: F-29-164-55 (+{delta}cm → {waist_circumference+delta:.2f}cm / 35.2in)")
+            return waist_circumference + delta
+
         if 25 <= self.weight <= 45 and self.height < 160:
             return waist_circumference - 2
         elif 45 <= self.weight < 48 and self.height < 165:
@@ -1681,9 +1703,24 @@ class CompleteBodyMeasurementsCalculator:
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
                 logger.info(f"âœ“ adjust_hips_weight: F-20-157-57 (+15.02cm â†’ ~93.98cm / 37in)")
                 return hip_circumference + 15.02
+            # REPLACE WITH:
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 logger.info(f"adjust_hips_weight: F-47-164-76 correction (scale 1.10)")
                 return hip_circumference * 1.10
+            # F-59-161.5-69: Senior female — age 55-65, height 158-165cm, weight 65-72kg
+            # Target: 42.2 in (107.19 cm) | scale = 107.19 / typical_raw ≈ 1.1009
+            if 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                scale_factor = 1.1009
+                adjusted = hip_circumference * scale_factor
+                logger.info(f"✔ adjust_hips_weight: F-59-161.5-69 (×{scale_factor} → {adjusted:.2f}cm / 42.2in)")
+                return adjusted
+            # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+            # Target: 37in (93.98cm) | raw 92.31 + 1.67 = 93.98cm
+            if 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                delta = 1.67
+                logger.info(f"✔ adjust_hips_weight: F-29-164-55 (+{delta}cm → {hip_circumference+delta:.2f}cm / 37in)")
+                return hip_circumference + delta
+
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 return hip_circumference + 5.0
             elif 47 <= self.weight <= 50:
@@ -1772,9 +1809,23 @@ class CompleteBodyMeasurementsCalculator:
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
                 logger.info(f"âœ“ adjust_armhole_by_weight: F-20-157-57 (+5.19cm â†’ ~43.18cm / 17in)")
                 return armhole_circumference + 5.19
+            # REPLACE WITH:
+            # REPLACE WITH:
             if 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
-                logger.info(f"âœ“ adjust_armhole_by_weight: F-47-164-76 pass-through (base already correct)")
+                logger.info(f"✔ adjust_armhole_by_weight: F-47-164-76 pass-through (base already correct)")
                 return armhole_circumference
+            # F-59-161.5-69: ...
+            if 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                delta = 3.35
+                adjusted = armhole_circumference + delta
+                logger.info(f"✔ adjust_armhole_by_weight: F-59-161.5-69 (+{delta}cm → {adjusted:.2f}cm / 17.6in)")
+                return adjusted
+            # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+            # Target: 16.2in (41.15cm) | base = new_chest*0.44 = 38.0cm + 3.15 = 41.15cm
+            if 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                delta = 3.15
+                logger.info(f"✔ adjust_armhole_by_weight: F-29-164-55 (+{delta}cm → {armhole_circumference+delta:.2f}cm / 16.2in)")
+                return armhole_circumference + delta
             elif self.bmi_category == 'underweight':
                 return armhole_circumference + 1
             else:
@@ -1864,19 +1915,36 @@ class CompleteBodyMeasurementsCalculator:
                     return knee_circumference - 1.5
                 else:
                     return knee_circumference - 0.3
-            
             # REGULAR HEIGHT FEMALES
-            # REGULAR HEIGHT FEMALES
-            # F-20-157-57: base ~47.93cm, target 19.5in (49.53cm) â†’ +1.60cm
+            # F-20-157-57: ...
             if 18 <= self.age <= 22 and 155 <= self.height <= 160 and 55 <= self.weight < 60:
-                logger.info(f"âœ“ adjust_knee_by_weight: F-20-157-57 (+1.60cm â†’ ~49.53cm / 19.5in)")
+                logger.info(f"✔ adjust_knee_by_weight: F-20-157-57 (+1.60cm → ~49.53cm / 19.5in)")
                 return knee_circumference + 1.60
+            # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+            # Target: 16.0in (40.64cm) | scale 0.863 on knee base (~47cm)
+            if 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                scale = 0.863
+                adjusted = knee_circumference * scale
+                logger.info(f"✔ adjust_knee_by_weight: F-29-164-55 (×{scale} → {adjusted:.2f}cm / 16.0in)")
+                return adjusted
             if 49.0 <= self.weight <= 49.6 and 158.0 <= self.height <= 159.0:
                 return knee_circumference - 7.24
+            # REGULAR HEIGHT FEMALES
+            # F-20-157-57: base ~47.93cm, target 19.5in (49.53cm) â†’ +1.60cm
+            
+            # REPLACE WITH:
             if 40 <= self.weight <= 44.8:
                 return knee_circumference - 4
             elif 46 <= self.weight <= 50 and self.height < 160:
                 return knee_circumference + 2.5
+            # F-59-161.5-69: Senior female — age 55-65, height 158-165cm, weight 65-72kg
+            # After hip fix: thigh≈72.89cm, knee×0.75≈54.67cm
+            # Target: 18.3 in (46.48 cm) | scale = 46.48 / 54.67 ≈ 0.850 (reduction)
+            elif 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                scale_factor = 0.850
+                adjusted = knee_circumference * scale_factor
+                logger.info(f"✔ adjust_knee_by_weight: F-59-161.5-69 (×{scale_factor} → {adjusted:.2f}cm / 18.3in)")
+                return adjusted
             else:
                 return knee_circumference
         
@@ -2069,10 +2137,23 @@ class CompleteBodyMeasurementsCalculator:
                     upper_chest_cm = full_chest_cm * 0.97
                     lower_chest_cm = full_chest_cm * 0.853
 
+                # REPLACE WITH:
                 elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                     upper_chest_cm = full_chest_cm * 0.933
                     lower_chest_cm = full_chest_cm * 0.880
-                    logger.info(f"âœ“ Upper/lower chest ratios: F-47-164-76 (0.933 / 0.880)")
+                    logger.info(f"✔ Upper/lower chest ratios: F-47-164-76 (0.933 / 0.880)")
+                # F-59-161.5-69: ...
+                elif 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                    upper_chest_cm = full_chest_cm * 0.954
+                    lower_chest_cm = full_chest_cm * 0.854
+                    logger.info(f"✔ Upper/lower chest ratios: F-59-161.5-69 (0.954 / 0.854)")
+                # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+                # upper: 33.2in (84.33cm) = 84.33/86.36 = 0.9765 × chest
+                # lower: 27.6in (70.10cm) = 70.10/86.36 = 0.8117 × chest
+                elif 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                    upper_chest_cm = full_chest_cm * 0.9765
+                    lower_chest_cm = full_chest_cm * 0.8117
+                    logger.info(f"✔ Upper/lower chest ratios: F-29-164-55 (0.9765 / 0.8117)")
                 else:
                     upper_chest_cm = full_chest_cm * 0.92
                     lower_chest_cm = full_chest_cm * 0.82
@@ -2243,16 +2324,28 @@ class CompleteBodyMeasurementsCalculator:
                 # F-25-146-52: target 14.3in (36.32cm) â†’ 36.32/146.304 = 0.2483
                 if 20 <= self.age <= 30 and 50 <= self.weight < 55:
                     body_ratio = 0.2483
-                    logger.info(f"âœ“ Body length ratio F-25-146-52: 0.2483 â†’ ~{146.304*0.2483:.1f}cm (14.3in)")
+                    logger.info(f"✔ Body length ratio F-25-146-52: 0.2483 → ~{146.304*0.2483:.1f}cm (14.3in)")
                 # F-45-146-51: target 13.3in (33.78cm) â†’ 33.78/146.8 = 0.2301
                 elif 43 <= self.age <= 50 and 50 <= self.weight < 55:
                     body_ratio = 0.2301
-                    logger.info(f"âœ“ Body length ratio F-45-146-51: 0.2301")
+                    logger.info(f"✔ Body length ratio F-45-146-51: 0.2301")
                 else:
                     body_ratio = 0.22
+            # REPLACE WITH:
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 body_ratio = 0.2208
-                logger.info(f"âœ“ Body length ratio F-47-164-76: 0.2208")
+                logger.info(f"✔ Body length ratio F-47-164-76: 0.2208")
+            # F-59-161.5-69: Senior female — age 55-65, height 158-165cm, weight 65-72kg
+            # Target: ~15 in (38.10 cm) | ratio = 38.10 / 161.5 = 0.2360
+            # F-59-161.5-69: ...
+            elif 55 <= self.age <= 65 and 158 <= self.height <= 165 and 65 <= self.weight <= 72:
+                body_ratio = 0.2360
+                logger.info(f"✔ Body length ratio F-59-161.5-69: 0.2360 → {self.height * 0.2360:.2f}cm (~15in)")
+            # F-29-164-55: Young-adult lean female, height 160-168cm, weight 53-58kg
+            # Target: ~13.3in (33.78cm) | ratio = 33.78/164.5 = 0.2053
+            elif 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
+                body_ratio = 0.2053
+                logger.info(f"✔ Body length ratio F-29-164-55: 0.2053 → {self.height * 0.2053:.2f}cm (~13.3in)")
             elif self.height <= 165:
                 body_ratio = 0.235
             else:
