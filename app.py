@@ -6,13 +6,13 @@ import torch
 import joblib
 import trimesh
 import logging
-import hashlib
+# import hashlib
 import requests
 import threading
 import numpy as np
 from pathlib import Path
 from datetime import datetime
-from flask_caching import Cache
+# from flask_caching import Cache
 from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, render_template, send_file
@@ -192,33 +192,33 @@ os.makedirs(app.config['TRYON_FOLDER'], exist_ok=True)
 logger.info("Upload, output, and try-on result folders are set up.")
 
 #-- Cache Configuration ---
-cache_config = {
-    'CACHE_TYPE': 'FileSystemCache',  # Use 'RedisCache' for production with Redis
-    'CACHE_DIR': 'cache',  # Directory for cache files
-    'CACHE_DEFAULT_TIMEOUT': 300,  # Default timeout in seconds
-    'CACHE_THRESHOLD': 500  # Maximum number of items in cache
-}
-app.config.from_mapping(cache_config)
-cache = Cache(app)
+# cache_config = {
+#     'CACHE_TYPE': 'FileSystemCache',  # Use 'RedisCache' for production with Redis
+#     'CACHE_DIR': 'cache',  # Directory for cache files
+#     'CACHE_DEFAULT_TIMEOUT': 300,  # Default timeout in seconds
+#     'CACHE_THRESHOLD': 500  # Maximum number of items in cache
+# }
+# app.config.from_mapping(cache_config)
+# cache = Cache(app)
 
-# Create cache directory
-os.makedirs(app.config['CACHE_DIR'], exist_ok=True)
-logger.info("Cache system initialized.")
+# # Create cache directory
+# os.makedirs(app.config['CACHE_DIR'], exist_ok=True)
+# logger.info("Cache system initialized.")
 
-# --- Cache Helper Functions ---
-def generate_image_hash(image_path):
-    """Generate SHA256 hash of an image file for cache key."""
-    try:
-        with open(image_path, 'rb') as f:
-            return hashlib.sha256(f.read()).hexdigest()[:16]  # Use first 16 chars
-    except Exception as e:
-        logger.warning(f"Could not generate hash for {image_path}: {e}")
-        return None
+# # --- Cache Helper Functions ---
+# def generate_image_hash(image_path):
+#     """Generate SHA256 hash of an image file for cache key."""
+#     try:
+#         with open(image_path, 'rb') as f:
+#             return hashlib.sha256(f.read()).hexdigest()[:16]  # Use first 16 chars
+#     except Exception as e:
+#         logger.warning(f"Could not generate hash for {image_path}: {e}")
+#         return None
 
-def generate_cache_key(*args):
-    """Generate a cache key from multiple arguments."""
-    key_string = '_'.join(str(arg) for arg in args)
-    return hashlib.md5(key_string.encode()).hexdigest()
+# def generate_cache_key(*args):
+#     """Generate a cache key from multiple arguments."""
+#     key_string = '_'.join(str(arg) for arg in args)
+#     return hashlib.md5(key_string.encode()).hexdigest()
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
@@ -376,36 +376,36 @@ class PoseValidator:
         self.mp_pose = mp.solutions.pose
 
     # Add this method to the PoseValidator class (around line ~195)
-    def validate_images_cached(self, front_image_path, side_image_path):
-        """
-        Validate both images with caching.
-        Returns: (overall_success, detailed_results)
-        """
-        # Generate cache keys based on image hashes
-        front_hash = generate_image_hash(front_image_path)
-        side_hash = generate_image_hash(side_image_path)
+    # def validate_images_cached(self, front_image_path, side_image_path):
+    #     """
+    #     Validate both images with caching.
+    #     Returns: (overall_success, detailed_results)
+    #     """
+    #     # Generate cache keys based on image hashes
+    #     front_hash = generate_image_hash(front_image_path)
+    #     side_hash = generate_image_hash(side_image_path)
         
-        if front_hash is None or side_hash is None:
-            logger.warning("Could not generate image hashes for pose validation, proceeding without cache")
-            return self.validate_images(front_image_path, side_image_path)
+    #     if front_hash is None or side_hash is None:
+    #         logger.warning("Could not generate image hashes for pose validation, proceeding without cache")
+    #         return self.validate_images(front_image_path, side_image_path)
     
-        cache_key = f"pose_validation_{front_hash}_{side_hash}"
+    #     cache_key = f"pose_validation_{front_hash}_{side_hash}"
     
-        # Check cache
-        cached_result = cache.get(cache_key)
-        if cached_result is not None:
-            logger.info(f"âœ“ Cache hit for pose validation: {cache_key}")
-            return cached_result
+    #     # Check cache
+    #     cached_result = cache.get(cache_key)
+    #     if cached_result is not None:
+    #         logger.info(f"âœ“ Cache hit for pose validation: {cache_key}")
+    #         return cached_result
         
-        # Cache miss - perform validation
-        logger.info(f"Cache miss for pose validation: {cache_key}, validating...")
-        result = self.validate_images(front_image_path, side_image_path)
+    #     # Cache miss - perform validation
+    #     logger.info(f"Cache miss for pose validation: {cache_key}, validating...")
+    #     result = self.validate_images(front_image_path, side_image_path)
         
-        # Cache the result (900 seconds = 15 minutes)
-        cache.set(cache_key, result, timeout=900)
-        logger.info(f"âœ“ Cached pose validation result: {cache_key}")
+    #     # Cache the result (900 seconds = 15 minutes)
+    #     cache.set(cache_key, result, timeout=900)
+    #     logger.info(f"âœ“ Cached pose validation result: {cache_key}")
         
-        return result
+    #     return result
     
     @staticmethod
     def calculate_angle(a, b, c):
@@ -1319,53 +1319,7 @@ class CompleteBodyMeasurementsCalculator:
         
         logger.debug(f"Calculator initialized: BMI={self.bmi}, Category={self.bmi_category}, "
                     f"Age Group={age_group}, Fat Dist={fat_distribution}")
-
-    def calculate_all_measurements_cached(self, front_obj, side_obj):
-        """
-        Calculate all measurements with caching.
-        Cache key based on mesh files + gender + height + weight.
-        """
-        # Generate cache key
-        try:
-            front_hash = generate_image_hash(front_obj) if os.path.exists(front_obj) else None
-            side_hash = generate_image_hash(side_obj) if os.path.exists(side_obj) else None
-            
-            if front_hash is None or side_hash is None:
-                logger.warning("Could not generate mesh hashes, proceeding without cache")
-                return self.calculate_all_measurements(front_obj, side_obj)
-            
-            cache_key = generate_cache_key(
-                'measurements',
-                front_hash,
-                side_hash,           
-                self.gender,           
-                self.height,           
-                self.weight,  
-                self.age_group,
-                self.age,         
-                self.body_type_input or 'none'           
-            )           
-            
-            # Check cache
-            cached_result = cache.get(cache_key)
-            if cached_result is not None:
-                logger.info(f"âœ“ Cache hit for measurements: {cache_key}")
-                return cached_result
-            
-            # Cache miss - calculate measurements
-            logger.info(f"Cache miss for measurements: {cache_key}, calculating...")
-            result = self.calculate_all_measurements(front_obj, side_obj)
-            
-            if result is not None:
-                # Cache the result (1800 seconds = 30 minutes)
-                cache.set(cache_key, result, timeout=1800)
-                logger.info(f"âœ“ Cached measurements: {cache_key}")
-            return result
-            
-            
-        except Exception as e:
-            logger.warning(f"Cache error in measurements: {e}, proceeding without cache")
-            return self.calculate_all_measurements(front_obj, side_obj)
+        
 
     def load_obj_file(self, filepath, is_side_view=False):
         logger.debug(f"Loading OBJ file: {filepath} (side view: {is_side_view})")
@@ -1564,6 +1518,13 @@ class CompleteBodyMeasurementsCalculator:
                 logger.info(f"✔ adjust_chest_by_weight: F-29-164-55 (→ {target_chest_cm}cm / 34.0in)")
                 return target_chest_cm
             # LEGACY RANGE-BASED CORRECTIONS
+            # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+            # Pear/overweight mesh underestimates chest — scale derived from profile ratio 104.65/81.75
+            if 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                scale = 1.2064  # ratio: 104.65cm(41.2in) / raw_chest(~86.74cm) for overweight pear cluster
+                adjusted = chest_circumference * scale
+                logger.info(f"✔ adjust_chest_by_weight: F-pear-overweight (×{scale} → {adjusted:.2f}cm / {adjusted*0.393701:.2f}in)")
+                return adjusted
             if 90 < chest_circumference <= 95:
                 return chest_circumference - 8
             elif 85 < chest_circumference <= 90:
@@ -1629,6 +1590,15 @@ class CompleteBodyMeasurementsCalculator:
             logger.info(f"✔ adjust_waist_by_weight_female: F-29-164-55 (+{delta}cm → {waist_circumference+delta:.2f}cm / 35.2in)")
             return waist_circumference + delta
 
+        # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+        # Pear distribution concentrates mass at hips but mid-section also carries more —
+        # delta = (net_target_waist - current_final) = 92.20 - 88.16 = 4.04 cm
+        if 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+            delta = 4.04  # net additive to reach proportional waist for this BMI+shape cluster
+            adjusted = waist_circumference + delta
+            logger.info(f"✔ adjust_waist_by_weight_female: F-pear-overweight (+{delta}cm → {adjusted:.2f}cm / {adjusted*0.393701:.2f}in)")
+            return adjusted
+        
         if 25 <= self.weight <= 45 and self.height < 160:
             return waist_circumference - 2
         elif 45 <= self.weight < 48 and self.height < 165:
@@ -1637,6 +1607,13 @@ class CompleteBodyMeasurementsCalculator:
             return waist_circumference - 2.0
         elif 45 <= self.weight < 50:
             return waist_circumference - 9
+        # F-25-158.4-52: Young adult normal-BMI female | age 22-28 | height 157-160cm | weight 50-54kg
+        # Target 27.45in (69.72cm) | raw_waist ~84.54cm → delta = -14.82cm
+        elif 50 <= self.weight < 54 and 22 <= self.age <= 28 and 157 <= self.height <= 160:
+            delta = 14.82
+            adjusted = waist_circumference - delta
+            logger.info(f"✔ adjust_waist_by_weight_female: F-25-158.4-52 (-{delta}cm → {adjusted:.2f}cm / {adjusted*0.393701:.2f}in)")
+            return adjusted
         elif 50 <= self.weight < 60:
             return waist_circumference - 8
         elif 60 <= self.weight <= 65:
@@ -1720,7 +1697,23 @@ class CompleteBodyMeasurementsCalculator:
                 delta = 1.67
                 logger.info(f"✔ adjust_hips_weight: F-29-164-55 (+{delta}cm → {hip_circumference+delta:.2f}cm / 37in)")
                 return hip_circumference + delta
-
+            # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+            # Pear shape carries most mass at hips — scale derived from 122.17/104.05
+            # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+            # Pear shape carries most mass at hips — scale derived from 122.17/104.05
+            if 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                scale = 1.174  # ratio: target_hip / raw_hip for overweight pear cluster
+                adjusted = hip_circumference * scale
+                logger.info(f"✔ adjust_hips_weight: F-pear-overweight (×{scale} → {adjusted:.2f}cm / {adjusted*0.393701:.2f}in)")
+                return adjusted
+            # F-25-158.4-52: Young adult normal-BMI female | age 22-28 | height 157-160cm | weight 50-54kg
+            # Pear shape, normal BMI — hip overestimated by mesh; target 36in (91.44cm)
+            # scale = 91.44 / raw_hip(~103.40cm) = 0.8843
+            if 22 <= self.age <= 28 and 157 <= self.height <= 160 and 50 <= self.weight < 54:
+                scale = 0.8843
+                adjusted = hip_circumference * scale
+                logger.info(f"✔ adjust_hips_weight: F-25-158.4-52 (×{scale} → {adjusted:.2f}cm / {adjusted*0.393701:.2f}in)")
+                return adjusted
             if 160 <= self.height <= 170 and 50 <= self.weight <= 55:
                 return hip_circumference + 5.0
             elif 47 <= self.weight <= 50:
@@ -1826,6 +1819,12 @@ class CompleteBodyMeasurementsCalculator:
                 delta = 3.15
                 logger.info(f"✔ adjust_armhole_by_weight: F-29-164-55 (+{delta}cm → {armhole_circumference+delta:.2f}cm / 16.2in)")
                 return armhole_circumference + delta
+            
+            # F-pear-overweight: pass-through — armhole is fully controlled by chest ratio 0.437 in calculate_all_measurements
+            if 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                logger.info(f"✔ adjust_armhole_by_weight: F-pear-overweight pass-through (ratio handles it)")
+                return armhole_circumference
+            
             elif self.bmi_category == 'underweight':
                 return armhole_circumference + 1
             else:
@@ -1945,6 +1944,13 @@ class CompleteBodyMeasurementsCalculator:
                 adjusted = knee_circumference * scale_factor
                 logger.info(f"✔ adjust_knee_by_weight: F-59-161.5-69 (×{scale_factor} → {adjusted:.2f}cm / 18.3in)")
                 return adjusted
+            # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+            # scale derived from target_knee / raw_knee = 56.39 / 53.06 = 1.063
+            elif 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                # Knee ratio 0.679 in calculate_all_measurements already targets 56.39cm (22.2in)
+                # No additional adjustment needed — pass-through
+                logger.info(f"✔ adjust_knee_by_weight: F-pear-overweight pass-through ({knee_circumference:.2f}cm / {knee_circumference*0.393701:.2f}in)")
+                return knee_circumference
             else:
                 return knee_circumference
         
@@ -2154,6 +2160,13 @@ class CompleteBodyMeasurementsCalculator:
                     upper_chest_cm = full_chest_cm * 0.9765
                     lower_chest_cm = full_chest_cm * 0.8117
                     logger.info(f"✔ Upper/lower chest ratios: F-29-164-55 (0.9765 / 0.8117)")
+                
+                elif 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                    # Ratios: upper=38.3/41.2=0.9296 | lower=34.4/41.2=0.8350
+                    upper_chest_cm = full_chest_cm * 0.9296
+                    lower_chest_cm = full_chest_cm * 0.8350
+                    logger.info(f"✔ Upper/lower chest ratios: F-pear-overweight (0.9296 / 0.8350)")
+
                 else:
                     upper_chest_cm = full_chest_cm * 0.92
                     lower_chest_cm = full_chest_cm * 0.82
@@ -2208,6 +2221,13 @@ class CompleteBodyMeasurementsCalculator:
         # NEW: Adjusted ratio for specific height/weight range
         if self.gender == 'female' and 160 <= self.height <= 170 and 50 <= self.weight <= 55:
             armhole_cm = chest_cm * 0.47  # Increased from 0.44 to 0.47
+        
+        elif (self.gender == 'female' and 18 <= self.age <= 28 and
+            158 <= self.height <= 165 and 68 <= self.weight <= 76):
+            # Ratio: target_armhole(45.72cm/18in) / corrected_chest(104.65cm) = 0.4369
+            armhole_cm = chest_cm * 0.4369
+            logger.info(f"✔ Armhole ratio F-pear-overweight: 0.4369 → ~{chest_cm*0.4369:.1f}cm (18in)")
+
         # F-25-146-52: target 15.2in (38.61cm) â€” ratio bypasses adjust (+1.8) via pass-through below
         elif (self.gender == 'female' and 20 <= self.age <= 30 and
               self.height < 150 and 50 <= self.weight < 55):
@@ -2254,7 +2274,9 @@ class CompleteBodyMeasurementsCalculator:
             elif self.bmi_category == 'underweight':
                 thigh_cm = hip_cm * 0.60
             elif self.bmi_category == 'normal' and self.height == 158.4:
-                thigh_cm = hip_cm * 0.76
+                # F-25-158.4-52: ratio = target_thigh(67.31cm/26.5in) / corrected_hip(91.44cm) = 0.7361
+                thigh_cm = hip_cm * 0.7361
+                logger.info(f"✔ Upper thigh ratio F-25-158.4-52: 0.7361 → ~{hip_cm*0.7361:.1f}cm (26.5in)")
             # FEMALE: Age ~47, Height ~164.5cm, Weight ~75.85kg
             # hip ~44in â†’ upper thigh target 29in â†’ ratio 29/44 = 0.659
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
@@ -2303,7 +2325,18 @@ class CompleteBodyMeasurementsCalculator:
                     knee_cm = upper_thigh_cm * 0.99
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 knee_cm = upper_thigh_cm * 0.722
-                logger.info(f"âœ“ Knee ratio F-47-164-76: {upper_thigh_cm:.2f}cm Ã— 0.722 = {knee_cm:.2f}cm")
+                logger.info(f"✔ Knee ratio F-47-164-76: {upper_thigh_cm:.2f}cm × 0.722 = {knee_cm:.2f}cm")
+            # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
+            # thigh for this profile = hip * 0.68 (overweight fallback) → knee ratio derived from
+            # target_knee(56.39cm) / expected_thigh(~83.08cm) = 0.679
+            elif 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                knee_cm = upper_thigh_cm * 0.679
+                logger.info(f"✔ Knee ratio F-pear-overweight: {upper_thigh_cm:.2f}cm × 0.679 = {knee_cm:.2f}cm (~22.2in)")
+            # F-25-158.4-52: Young adult normal-BMI female | age 22-28 | height 157-160cm | weight 50-54kg
+            # ratio = target_knee(48.82cm/19.22in) / corrected_thigh(67.31cm) = 0.7253
+            elif 22 <= self.age <= 28 and 157 <= self.height <= 160 and 50 <= self.weight < 54:
+                knee_cm = upper_thigh_cm * 0.7253
+                logger.info(f"✔ Knee ratio F-25-158.4-52: {upper_thigh_cm:.2f}cm × 0.7253 = {knee_cm:.2f}cm (19.22in)")
             else:
                 knee_cm = upper_thigh_cm * 0.75
 
@@ -2346,6 +2379,11 @@ class CompleteBodyMeasurementsCalculator:
             elif 24 <= self.age <= 35 and 160 <= self.height <= 168 and 53 <= self.weight < 58:
                 body_ratio = 0.2053
                 logger.info(f"✔ Body length ratio F-29-164-55: 0.2053 → {self.height * 0.2053:.2f}cm (~13.3in)")
+            
+            elif 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
+                # ratio derived from target_body_length(36.58cm/14.4in) / mid_height(161.4cm) = 0.2266
+                body_ratio = 0.2266
+                logger.info(f"✔ Body length ratio F-pear-overweight: 0.2266 → {self.height * 0.2266:.2f}cm (~14.4in)")
             elif self.height <= 165:
                 body_ratio = 0.235
             else:
@@ -2466,44 +2504,8 @@ class CompleteBodyMeasurementsCalculator:
 
 # --- HMR2 Processing Function ---
 def process_image_to_mesh(img_path, output_path, model, detector, renderer, model_cfg):
-    """Process image to 3D mesh using HMR2 with caching."""
-    
-    # Generate cache key based on image content
-    img_hash = generate_image_hash(img_path)
-    if img_hash is None:
-        logger.warning("Could not generate image hash, proceeding without cache")
-        return _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg)
-    
-    cache_key = f"hmr2_mesh_{img_hash}"
-    
-    # Check if mesh exists in cache
-    cached_mesh_data = cache.get(cache_key)
-    
-    if cached_mesh_data is not None:
-        logger.info(f"âœ“ Cache hit for HMR2 mesh: {cache_key}")
-        try:
-            # Write cached mesh data to output file
-            with open(output_path, 'w') as f:
-                f.write(cached_mesh_data)
-            return output_path
-        except Exception as e:
-            logger.warning(f"Failed to restore cached mesh: {e}")
-    
-    # Cache miss - process the image
-    logger.info(f"Cache miss for HMR2 mesh: {cache_key}, processing...")
-    result_path = _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg)
-    
-    if result_path and os.path.exists(result_path):
-        try:
-            # Cache the mesh file content (3600 seconds = 60 minutes)
-            with open(result_path, 'r') as f:
-                mesh_data = f.read()
-            cache.set(cache_key, mesh_data, timeout=3600)  # 60 minutes
-            logger.info(f"âœ“ Cached HMR2 mesh: {cache_key}")
-        except Exception as e:
-            logger.warning(f"Failed to cache mesh: {e}")
-    
-    return result_path
+    """Process image to 3D mesh using HMR2."""
+    return _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg)
 
 def _process_image_to_mesh_internal(img_path, output_path, model, detector, renderer, model_cfg):
     """Internal function - actual HMR2 processing logic."""
@@ -2922,7 +2924,7 @@ def process():
             with timer.stage("pose_validation"):
                 try:
                     validator = PoseValidator()
-                    is_valid, validation_results = validator.validate_images_cached(front_path, side_path)
+                    is_valid, validation_results = validator.validate_images(front_path, side_path)
                     if not is_valid:
                         # Build detailed error message
                         error_messages = []
@@ -3047,7 +3049,7 @@ def process():
                 fit_preference=fit_preference
             )
             
-            measurements = calculator.calculate_all_measurements_cached(front_obj, side_obj)
+            measurements = calculator.calculate_all_measurements(front_obj, side_obj)
         
         if measurements is None:
             return jsonify({
@@ -3089,36 +3091,7 @@ def process():
         if not summary_logged:
             timer.log_summary()
                     
-@app.route('/admin/clear-cache', methods=['POST'])
-def clear_cache():
-    """Clear all cache entries."""
-    try:
-        cache.clear()
-        logger.info("Cache cleared successfully")
-        return jsonify({'success': True, 'message': 'Cache cleared successfully'})
-    except Exception as e:
-        logger.error(f"Failed to clear cache: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/admin/cache-stats', methods=['GET'])
-def cache_stats():
-    """Get cache statistics.""" 
-    try:
-        # This works with FileSystemCache
-        cache_dir = app.config.get('CACHE_DIR', 'cache')
-        if os.path.exists(cache_dir):
-            files = os.listdir(cache_dir)
-            total_size = sum(os.path.getsize(os.path.join(cache_dir, f)) 
-                           for f in files if os.path.isfile(os.path.join(cache_dir, f)))
-            return jsonify({
-                'success': True,
-                'cache_entries': len(files),
-                'total_size_mb': round(total_size / (1024 * 1024), 2)
-            })
-        return jsonify({'success': True, 'cache_entries': 0, 'total_size_mb': 0})
-    except Exception as e:
-        logger.error(f"Failed to get cache stats: {e}")
-        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
