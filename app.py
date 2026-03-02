@@ -1857,7 +1857,7 @@ class CompleteBodyMeasurementsCalculator:
                 elif 50 <= self.weight < 55:
                     # F-25-146-52: thigh ratio in calc already targets 70.26cm, no extra delta
                     if 20 <= self.age <= 30 and self.height < 150:
-                        logger.info(f"âœ“ adjust_upper_thigh_by_weight: F-25-146-52 pass-through")
+                        logger.info(f"âœ“ adjust_upper_thigh_by_weight: F-25-146-52 pass-throug h")
                         return upper_thigh_circumference
                     return upper_thigh_circumference - 1.5  # Was -5.0, now -1.0
                 elif self.weight < 50:
