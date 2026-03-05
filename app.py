@@ -13,10 +13,12 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 # from flask_caching import Cache
+from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, render_template, send_file
 
+load_dotenv()
 # central logger for the application
 logger = logging.getLogger('BodyApp')
 logger.setLevel(logging.INFO) # Set default logging level
@@ -223,7 +225,9 @@ logger.info("Upload, output, and try-on result folders are set up.")
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 # Virtual Try-On API Configuration
-LIGHTX_API_KEY = "ae0ddbab09454d599116b0ec308dec7c_a43a8874d35d4cc88b85d224711d1d07_andoraitools"  
+LIGHTX_API_KEY = os.environ.get("LIGHTX_API_KEY")
+if not LIGHTX_API_KEY:
+    raise RuntimeError("LIGHTX_API_KEY is not set in .env file.")
 LIGHTX_BASE_URL = "https://api.lightxeditor.com/external/api/v2"
 CONTENT_TYPE = "image/jpeg"
 
