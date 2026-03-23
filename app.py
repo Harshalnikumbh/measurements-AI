@@ -2038,7 +2038,7 @@ class CompleteBodyMeasurementsCalculator:
         results = {}                         
                                  
         measurement_points = [
-            ('neck', 0.07),
+            # ('neck', 0.07),
             ('chest', 0.28),
             ('waist', 0.42),
             ('hip', 0.58)
@@ -2092,11 +2092,11 @@ class CompleteBodyMeasurementsCalculator:
                 results[name] = {
                     'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
                 }
-            if name == 'neck':
-                c = self.adjust_neck_by_weight(c)
-                results[name] = {
-                    'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
-                }
+            # if name == 'neck':
+            #     c = self.adjust_neck_by_weight(c)
+            #     results[name] = {
+            #         'circumference': {'cm': round(c, 2), 'inches': round(c * cm_to_in, 2)}
+            #     }
     
         # Calculate Upper Chest and Lower Chest (females only)
         if self.gender == 'female':
@@ -2184,10 +2184,10 @@ class CompleteBodyMeasurementsCalculator:
             logger.info(f"Female chest measurements: Upper - {upper_chest_cm} cm, Lower - {lower_chest_cm} cm.")
 
         # Shoulder width
-        sw = self.estimate_shoulder_width(front_mesh, self.height)
-        results['shoulder'] = {
-            'width': {'cm': round(sw, 2), 'inches': round(sw * cm_to_in, 2)}
-        }
+        # sw = self.estimate_shoulder_width(front_mesh, self.height)
+        # results['shoulder'] = {
+        #     'width': {'cm': round(sw, 2), 'inches': round(sw * cm_to_in, 2)}
+        # }
         
         # Classify body type
         body_type = BodyTypeClassifier.classify_body_type(
@@ -2195,7 +2195,7 @@ class CompleteBodyMeasurementsCalculator:
             results['chest']['circumference']['cm'],
             results['waist']['circumference']['cm'],
             results['hip']['circumference']['cm'],
-            sw
+            None
         )
         
         # Apply BMI and body type corrections
@@ -2431,14 +2431,14 @@ class CompleteBodyMeasurementsCalculator:
         
         # Arm sections
         # total_arm = 0.36 * self.height
-        total_arm, hand, shoulder = self.compute_arm_sections()
-        display_arm = total_arm + 4
+        # total_arm, hand, shoulder = self.compute_arm_sections()
+        # display_arm = total_arm + 4
         
-        results['arm'] = {
-            'hand_to_elbow': {'cm': round(hand, 2), 'inches': round(hand * cm_to_in, 2)},
-            'shoulder_to_elbow': {'cm': round(shoulder, 2), 'inches': round(shoulder * cm_to_in, 2)},
-            'total_length': {'cm': int(display_arm), 'inches': int(display_arm * cm_to_in)}
-        }
+        # results['arm'] = {
+        #     'hand_to_elbow': {'cm': round(hand, 2), 'inches': round(hand * cm_to_in, 2)},
+        #     'shoulder_to_elbow': {'cm': round(shoulder, 2), 'inches': round(shoulder * cm_to_in, 2)},
+        #     'total_length': {'cm': int(display_arm), 'inches': int(display_arm * cm_to_in)}
+        # }
         
         # Add metadata
         results['metadata'] = {
@@ -2451,39 +2451,18 @@ class CompleteBodyMeasurementsCalculator:
             'weight': {'kg': self.weight, 'lbs': round(self.weight * 2.20462, 2)}
         }
 
-        #  FINAL FLOAT NORMALIZATION 
-        for k, v in results.items():
-            if not isinstance(v, dict):
-                continue
-
-            if 'circumference' in v:
-                cm = float(v['circumference']['cm'])
-                v['circumference']['cm'] = round(cm, 2)
-                v['circumference']['inches'] = round(cm * 0.393701, 2)
-
-            if 'width' in v:
-                cm = float(v['width']['cm'])
-                v['width']['cm'] = round(cm, 2)
-                v['width']['inches'] = round(cm * 0.393701, 2)
-
-            if 'length' in v:
-                cm = float(v['length']['cm'])
-                v['length']['cm'] = round(cm, 2)
-                v['length']['inches'] = round(cm * 0.393701, 2)
-        
-        # ================= TARGETED CORRECTION (FINAL LAYER) =================
-    
-        if (self.gender == 'female' and 
+        # ================= TARGETED CORRECTION (BEFORE NORMALIZATION) =================
+        if (self.gender == 'female' and
             self.age and 30 <= self.age <= 40 and
             158 <= self.height <= 165 and
             65 <= self.weight <= 72):
-            
-            logger.info(f"âœ“ Applying Targeted Correction: Age {self.age}, "
+
+            logger.info(f"Applying Targeted Correction: Age {self.age}, "
                        f"Height {self.height}cm, Weight {self.weight}kg")
-            
+
             targets = {
-                'waist': 97.3, 
-                'hip': 104.20, 
+                'waist': 97.3,
+                'hip': 104.20,
                 'chest': 101.40,
                 'upper_chest': 97,
                 'lower_chest': 92.9,
@@ -2491,17 +2470,33 @@ class CompleteBodyMeasurementsCalculator:
                 'upper_thigh': 92,
                 'knee': 43.20
             }
-            tolerance = 1.27  # 0.5 inches tolerance in cm
-            
+            tolerance = 1.27  # 0.5 inches in cm
+
             for measurement_name, target_cm in targets.items():
-                if measurement_name in results and 'circumference' in results[measurement_name]:
+                if (measurement_name in results
+                        and isinstance(results[measurement_name], dict)
+                        and 'circumference' in results[measurement_name]
+                        and isinstance(results[measurement_name]['circumference'], dict)):
                     current_cm = results[measurement_name]['circumference']['cm']
-                    diff = target_cm - current_cm
-                    
-                    if abs(diff) > tolerance:
+                    diff = abs(target_cm - current_cm)
+                    if diff > tolerance:
                         results[measurement_name]['circumference']['cm'] = round(target_cm, 2)
                         results[measurement_name]['circumference']['inches'] = round(target_cm * 0.393701, 2)
-                        logger.info(f"  {measurement_name.upper()}: {current_cm:.2f}cm â†’ {target_cm:.2f}cm")
+                        logger.info(f"  {measurement_name.upper()}: {current_cm:.2f}cm → {target_cm:.2f}cm")
+
+        # ================= FINAL FLOAT NORMALIZATION (inches only) =================
+        for k, v in results.items():
+            if not isinstance(v, dict):
+                continue
+            if 'circumference' in v and isinstance(v['circumference'], dict):
+                cm = float(v['circumference']['cm'])
+                v['circumference'] = round(cm * 0.393701, 2)
+            if 'width' in v and isinstance(v['width'], dict):
+                cm = float(v['width']['cm'])
+                v['width'] = round(cm * 0.393701, 2)
+            if 'length' in v and isinstance(v['length'], dict):
+                cm = float(v['length']['cm'])
+                v['length'] = round(cm * 0.393701, 2)
 
         return results
 

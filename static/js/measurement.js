@@ -621,18 +621,16 @@ document.addEventListener('DOMContentLoaded', function () {
             =============================== */
 
             // Neck Circumference
-            safeUpdate('neckCircCm', m.neck?.circumference?.cm);
-            safeUpdate('neckCircIn', m.neck?.circumference?.inches);
+            // safeUpdate('neckCircCm', m.neck?.circumference?.cm);
+            // safeUpdate('neckCircIn', m.neck?.circumference?.inches);
 
             // Chest Circumference
-            safeUpdate('chestCircCm', m.chest?.circumference?.cm);
-            safeUpdate('chestCircIn', m.chest?.circumference?.inches);
+            safeUpdate('chestCircIn', m.chest?.circumference);
 
             // Upper Chest Circumference (Females Only)
             const upperChestCard = document.getElementById('upperChestCard');
             if (m.upper_chest && upperChestCard) {
-                safeUpdate('upperChestCircCm', m.upper_chest?.circumference?.cm);
-                safeUpdate('upperChestCircIn', m.upper_chest?.circumference?.inches);
+                safeUpdate('upperChestCircIn', m.upper_chest?.circumference);
                 upperChestCard.style.display = 'block';
                 upperChestCard.classList.add('show');
             } else if (upperChestCard) {
@@ -642,8 +640,7 @@ document.addEventListener('DOMContentLoaded', function () {
             // Lower Chest Circumference (Females Only)
             const lowerChestCard = document.getElementById('lowerChestCard');
             if (m.lower_chest && lowerChestCard) {
-                safeUpdate('lowerChestCircCm', m.lower_chest?.circumference?.cm);
-                safeUpdate('lowerChestCircIn', m.lower_chest?.circumference?.inches);
+                safeUpdate('lowerChestCircIn', m.lower_chest?.circumference);
                 lowerChestCard.style.display = 'block';
                 lowerChestCard.classList.add('show');
             } else if (lowerChestCard) {
@@ -651,42 +648,42 @@ document.addEventListener('DOMContentLoaded', function () {
             }
 
             // Waist Circumference
-            safeUpdate('waistCircCm', m.waist?.circumference?.cm);
-            safeUpdate('waistCircIn', m.waist?.circumference?.inches);
+            // Waist Circumference
+            safeUpdate('waistCircIn', m.waist?.circumference);
 
             // Hip Circumference
-            safeUpdate('hipCircCm', m.hip?.circumference?.cm);
-            safeUpdate('hipCircIn', m.hip?.circumference?.inches);
+            // Hip Circumference
+            safeUpdate('hipCircIn', m.hip?.circumference);
 
-            // Shoulder Width
-            safeUpdate('shoulderWidthCm', m.shoulder?.width?.cm);
-            safeUpdate('shoulderWidthIn', m.shoulder?.width?.inches);
+            // // Shoulder Width
+            // safeUpdate('shoulderWidthCm', m.shoulder?.width?.cm);
+            // safeUpdate('shoulderWidthIn', m.shoulder?.width?.inches);
 
             // Arm Lengths
-            safeUpdate('armHandCm', m.arm?.hand_to_elbow?.cm);
-            safeUpdate('armHandIn', m.arm?.hand_to_elbow?.inches);
+            // safeUpdate('armHandCm', m.arm?.hand_to_elbow?.cm);
+            // safeUpdate('armHandIn', m.arm?.hand_to_elbow?.inches);
 
-            safeUpdate('armShoulderCm', m.arm?.shoulder_to_elbow?.cm);
-            safeUpdate('armShoulderIn', m.arm?.shoulder_to_elbow?.inches);
+            // safeUpdate('armShoulderCm', m.arm?.shoulder_to_elbow?.cm);
+            // safeUpdate('armShoulderIn', m.arm?.shoulder_to_elbow?.inches);
 
-            safeUpdate('armTotalCm', m.arm?.total_length?.cm);
-            safeUpdate('armTotalIn', m.arm?.total_length?.inches);
+            // safeUpdate('armTotalCm', m.arm?.total_length?.cm);
+            // safeUpdate('armTotalIn', m.arm?.total_length?.inches);
 
             // Armhole circumference
-            safeUpdate('armholeCircCm', m.armhole?.circumference?.cm);
-            safeUpdate('armholeCircIn', m.armhole?.circumference?.inches);
+            // Armhole circumference
+            safeUpdate('armholeCircIn', m.armhole?.circumference);
 
             // Thigh circumference
-            safeUpdate('upperThighCircCm', m.upper_thigh?.circumference?.cm);
-            safeUpdate('upperThighCircIn', m.upper_thigh?.circumference?.inches);
+            // Thigh circumference
+            safeUpdate('upperThighCircIn', m.upper_thigh?.circumference);
 
             // Knee circumference
-            safeUpdate('kneeCircCm', m.knee?.circumference?.cm);
-            safeUpdate('kneeCircIn', m.knee?.circumference?.inches);
+            // Knee circumference
+            safeUpdate('kneeCircIn', m.knee?.circumference);
 
             // Body Length
-            safeUpdate('bodyLengthCm', m.body_length?.length?.cm);
-            safeUpdate('bodyLengthIn', m.body_length?.length?.inches);
+            // Body Length
+            safeUpdate('bodyLengthIn', m.body_length?.length);
 
             // Show results with smooth scroll
             if (results) {
