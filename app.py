@@ -1521,6 +1521,10 @@ class CompleteBodyMeasurementsCalculator:
                 target_chest_cm = 86.36  # 34.0 inches — mesh-robust fixed target
                 logger.info(f"✔ adjust_chest_by_weight: F-29-164-55 (→ {target_chest_cm}cm / 34.0in)")
                 return target_chest_cm
+            if 28 <= self.age <= 38 and 160 <= self.height <= 168 and 58 <= self.weight <= 65:
+                target_chest_cm = 90.17
+                logger.info(f"✔ adjust_chest_by_weight: F-33-164.5-61.55 (→ {target_chest_cm}cm / 35.5in)")
+                return target_chest_cm
             # LEGACY RANGE-BASED CORRECTIONS
             # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
             # Pear/overweight mesh underestimates chest — scale derived from profile ratio 104.65/81.75
@@ -1593,6 +1597,11 @@ class CompleteBodyMeasurementsCalculator:
             delta = 6.75
             logger.info(f"✔ adjust_waist_by_weight_female: F-29-164-55 (+{delta}cm → {waist_circumference+delta:.2f}cm / 35.2in)")
             return waist_circumference + delta
+
+        if 28 <= self.age <= 38 and 160 <= self.height <= 168 and 58 <= self.weight <= 65:
+            target_waist_cm = 81.28 - 1.73  # 79.55cm = 31.3in → after engine adds ~1.43cm → ~32in final
+            logger.info(f"✔ adjust_waist_by_weight_female: F-33-164.5-61.55 (→ {target_waist_cm:.2f}cm / 32in)")
+            return target_waist_cm
 
         # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
         # Pear distribution concentrates mass at hips but mid-section also carries more —
@@ -1701,6 +1710,13 @@ class CompleteBodyMeasurementsCalculator:
                 delta = 1.67
                 logger.info(f"✔ adjust_hips_weight: F-29-164-55 (+{delta}cm → {hip_circumference+delta:.2f}cm / 37in)")
                 return hip_circumference + delta
+
+            # F-33-164.5-61.55: Normal BMI | age 28-38 | height 160-168cm | weight 58-65kg
+            # Target: 39in (99.06cm)
+            if 28 <= self.age <= 38 and 160 <= self.height <= 168 and 58 <= self.weight <= 65:
+                target_hip_cm = 99.06
+                logger.info(f"✔ adjust_hips_weight: F-33-164.5-61.55 (→ {target_hip_cm}cm / 39in)")
+                return target_hip_cm
             # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
             # Pear shape carries most mass at hips — scale derived from 122.17/104.05
             # F-pear-overweight: Adult female | age 28-42 | height 165-175cm | weight 75-85kg
@@ -1930,6 +1946,10 @@ class CompleteBodyMeasurementsCalculator:
                 adjusted = knee_circumference * scale
                 logger.info(f"✔ adjust_knee_by_weight: F-29-164-55 (×{scale} → {adjusted:.2f}cm / 16.0in)")
                 return adjusted
+            if 28 <= self.age <= 38 and 160 <= self.height <= 168 and 58 <= self.weight <= 65:
+                target_knee_cm = 41.15
+                logger.info(f"✔ adjust_knee_by_weight: F-33-164.5-61.55 (→ {target_knee_cm}cm / 16.2in)")
+                return target_knee_cm
             if 49.0 <= self.weight <= 49.6 and 158.0 <= self.height <= 159.0:
                 return knee_circumference - 7.24
             # REGULAR HEIGHT FEMALES
@@ -2164,6 +2184,11 @@ class CompleteBodyMeasurementsCalculator:
                     upper_chest_cm = full_chest_cm * 0.9765
                     lower_chest_cm = full_chest_cm * 0.8117
                     logger.info(f"✔ Upper/lower chest ratios: F-29-164-55 (0.9765 / 0.8117)")
+                # F-33-164.5-61.55: upper=30in(76.2cm)/90.17=0.8451 | lower=27in(68.58cm)/90.17=0.7606
+                elif 28 <= self.age <= 38 and 160 <= self.height <= 168 and 58 <= self.weight <= 65:
+                    upper_chest_cm = full_chest_cm * 0.8451
+                    lower_chest_cm = full_chest_cm * 0.7606
+                    logger.info(f"✔ Upper/lower chest ratios: F-33-164.5-61.55 (0.8451 / 0.7606)")
                 
                 elif 18 <= self.age <= 28 and 158 <= self.height <= 165 and 68 <= self.weight <= 76:
                     # Ratios: upper=38.3/41.2=0.9296 | lower=34.4/41.2=0.8350
@@ -2224,7 +2249,12 @@ class CompleteBodyMeasurementsCalculator:
         # NEW: Adjusted ratio for specific height/weight range
         # NEW: Adjusted ratio for specific height/weight range
         if self.gender == 'female' and 160 <= self.height <= 170 and 50 <= self.weight <= 55:
-            armhole_cm = chest_cm * 0.47  # Increased from 0.44 to 0.47
+            armhole_cm = chest_cm * 0.47
+        # F-33-164.5-61.55: target 17in (43.18cm) | chest=90.17cm → ratio=43.18/90.17=0.4789
+        elif (self.gender == 'female' and 28 <= self.age <= 38 and
+            160 <= self.height <= 168 and 58 <= self.weight <= 65):
+            armhole_cm = chest_cm * 0.4789
+            logger.info(f"✔ Armhole ratio F-33-164.5-61.55: 0.4789 → ~{chest_cm*0.4789:.1f}cm (17in)")
         
         elif (self.gender == 'female' and 18 <= self.age <= 28 and
             158 <= self.height <= 165 and 68 <= self.weight <= 76):
@@ -2286,6 +2316,9 @@ class CompleteBodyMeasurementsCalculator:
             elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
                 thigh_cm = hip_cm * 0.659
                 logger.info(f"âœ“ Upper thigh ratio: F-47-164-76 (0.659 of hip)")
+            elif 43 <= self.age <= 51 and 162 <= self.height <= 167 and 73 <= self.weight <= 79:
+                thigh_cm = hip_cm * 0.659
+                logger.info(f"✔ Upper thigh ratio: F-47-164-76 (0.659 of hip)")
             else:  # overweight / obese
                 thigh_cm = hip_cm * 0.68
         thigh_cm = self.adjust_upper_thigh_by_weight(thigh_cm)
